@@ -1,7 +1,7 @@
 import logging
 import chromadb
 from chromadb.config import Settings as ChromaSettings
-from openai import OpenAI
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from app.config import settings
 from app.rag.schema_loader import load_schema_chunks
 from app.constants.messages import (
@@ -20,8 +20,8 @@ def get_chroma_client() -> chromadb.PersistentClient:
     )
 
 
-def get_openai_client() -> OpenAI:
-    return OpenAI(api_key=settings.openai_api_key)
+def get_embedding_function() -> DefaultEmbeddingFunction:
+    return DefaultEmbeddingFunction()
 
 
 def embed_schema() -> None:
@@ -30,10 +30,11 @@ def embed_schema() -> None:
     try:
         chunks = load_schema_chunks()
         chroma_client = get_chroma_client()
-        openai_client = get_openai_client()
+        embedding_function = get_embedding_function()
 
         collection = chroma_client.get_or_create_collection(
             name=settings.chroma_collection_name,
+            embedding_function=embedding_function,
             metadata={"hnsw:space": "cosine"},
         )
 
@@ -43,22 +44,17 @@ def embed_schema() -> None:
         new_chunks = [c for c in chunks if c["chunk_id"] not in existing_ids]
 
         if not new_chunks:
-            logger.info("Schema already embedded. Skipping. Total chunks: %d", len(existing_ids))
+            logger.info(
+                "Schema already embedded. Skipping. Total chunks: %d",
+                len(existing_ids),
+            )
             return
 
         texts = [c["text"] for c in new_chunks]
         ids = [c["chunk_id"] for c in new_chunks]
 
-        response = openai_client.embeddings.create(
-            model=settings.openai_embedding_model,
-            input=texts,
-        )
-
-        embeddings = [item.embedding for item in response.data]
-
         collection.add(
             ids=ids,
-            embeddings=embeddings,
             documents=texts,
         )
 
@@ -74,21 +70,15 @@ def embed_schema() -> None:
 def retrieve_schema_chunks(question: str) -> list[str]:
     try:
         chroma_client = get_chroma_client()
-        openai_client = get_openai_client()
+        embedding_function = get_embedding_function()
 
         collection = chroma_client.get_collection(
             name=settings.chroma_collection_name,
+            embedding_function=embedding_function,
         )
-
-        response = openai_client.embeddings.create(
-            model=settings.openai_embedding_model,
-            input=[question],
-        )
-
-        query_embedding = response.data[0].embedding
 
         results = collection.query(
-            query_embeddings=[query_embedding],
+            query_texts=[question],
             n_results=settings.top_k_chunks,
         )
 

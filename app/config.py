@@ -8,11 +8,17 @@ class Settings(BaseSettings):
     mssql_username: str
     mssql_password: str
     mssql_driver: str = "ODBC Driver 17 for SQL Server"
+    mssql_use_windows_auth: bool = False
+
 
     # OpenAI
     openai_api_key: str
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
+
+    # Groq
+    groq_api_key: str
+    groq_chat_model: str = "llama-3.3-70b-versatile"
 
     # RAG
     chroma_persist_path: str = "chroma_store"
@@ -31,10 +37,18 @@ class Settings(BaseSettings):
 
     @property
     def db_connection_string(self) -> str:
+        if self.mssql_use_windows_auth:
+            return (
+                f"mssql+pyodbc://{self.mssql_server}/{self.mssql_database}"
+                f"?driver={self.mssql_driver.replace(' ', '+')}"
+                f"&trusted_connection=yes"
+                f"&TrustServerCertificate=yes"
+            )
         return (
             f"mssql+pyodbc://{self.mssql_username}:{self.mssql_password}"
             f"@{self.mssql_server}/{self.mssql_database}"
             f"?driver={self.mssql_driver.replace(' ', '+')}"
+            f"&TrustServerCertificate=yes"
         )
 
 
