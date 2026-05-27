@@ -1,0 +1,10 @@
+@"
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+chroma_store/
+.pytest_cache/
+dist/
+"@ | Out-File -FilePath .gitignore -Encoding utf8
