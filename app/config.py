@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
 
+    # LLM Provider
+    llm_provider: str = "groq"
+    
     # Groq
     groq_api_key: str
     groq_chat_model: str = "llama-3.3-70b-versatile"
