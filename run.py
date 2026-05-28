@@ -1,0 +1,39 @@
+import threading
+import time
+import uvicorn
+from app.main import app
+from app.observability.logger import setup_logging
+from app.config import settings
+
+
+def start_fastapi():
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level=settings.log_level.lower(),
+    )
+
+
+def start_gradio():
+    # Wait for FastAPI to be ready before launching Gradio
+    time.sleep(3)
+    from ui.gradio_app import launch
+    launch()
+
+
+if __name__ == "__main__":
+    setup_logging(log_level=settings.log_level)
+
+    fastapi_thread = threading.Thread(target=start_fastapi, daemon=True)
+    gradio_thread = threading.Thread(target=start_gradio, daemon=True)
+
+    fastapi_thread.start()
+    gradio_thread.start()
+
+    # Keep main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nShutting down QueryBot.")
