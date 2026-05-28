@@ -44,7 +44,7 @@ def synthesise_response(
     )
 
     try:
-        # Handle empty results without calling LLM
+       # Handle empty results without calling LLM
         if not rows:
             agent_logger.info(
                 RESPONSE_SYNTHESIS_COMPLETED,
@@ -52,6 +52,15 @@ def synthesise_response(
                 payload={"row_count": 0},
             )
             return NO_RESULTS_FOUND
+
+        # Detect COUNT queries that returned a zero value
+        # A COUNT query returns exactly one row with a single numeric column
+        if len(rows) == 1:
+            values = list(rows[0].values())
+            if len(values) == 1 and isinstance(values[0], int) and values[0] == 0:
+                # Let the LLM answer naturally — "There are 0 pending orders to Canada"
+                # rather than the generic "No results found" message
+                pass
 
         # Format rows as readable text for the LLM
         formatted_rows = _format_rows(rows)
@@ -78,14 +87,17 @@ def synthesise_response(
 
         answer = response.choices[0].message.content.strip()
 
-        # Append cap warning if results were truncated
-        if results_capped:
+        # Append warnings — merge into one message if both apply
+        if results_capped and warn and warn_message:
+            answer += (
+                f"\n\nNote: your question asked for all results and the output is "
+                f"limited to {AppConfig.MAX_ROWS} rows. The results shown may be incomplete."
+            )
+        elif results_capped:
             answer += "\n\n" + RESULTS_CAPPED_WARNING.format(
                 max_rows=AppConfig.MAX_ROWS
             )
-
-        # Append unbounded query warning if LLM flagged it
-        if warn and warn_message:
+        elif warn and warn_message:
             answer += "\n\n" + UNBOUNDED_QUERY_WARNING.format(
                 max_rows=AppConfig.MAX_ROWS
             )

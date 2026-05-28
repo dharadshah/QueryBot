@@ -165,19 +165,26 @@ def seed_customers(cursor):
 
 
 def seed_orders(cursor):
+    from datetime import datetime, timedelta
+
+    today = datetime.utcnow()
+
+    def days_ago(n):
+        return (today - timedelta(days=n)).strftime("%Y-%m-%d")
+
     orders = [
-        (1, "2024-01-15", "delivered", 1329.98, "New York",    "USA"),
-        (1, "2024-03-22", "delivered",   49.99, "New York",    "USA"),
-        (2, "2024-02-10", "delivered",  399.99, "Los Angeles", "USA"),
-        (2, "2024-04-05", "shipped",    149.98, "Los Angeles", "USA"),
-        (3, "2024-03-01", "delivered",   84.98, "Chicago",     "USA"),
-        (4, "2024-04-18", "confirmed",  199.99, "Houston",     "USA"),
-        (5, "2024-05-02", "pending",     54.98, "Phoenix",     "USA"),
-        (6, "2024-02-28", "delivered",  169.98, "London",      "UK"),
-        (7, "2024-03-15", "delivered",   74.98, "Toronto",     "Canada"),
-        (8, "2024-04-20", "shipped",    129.99, "Sydney",      "Australia"),
-        (9, "2024-05-01", "pending",     39.99, "Mumbai",      "India"),
-        (10,"2024-05-10", "confirmed",  179.98, "Berlin",      "Germany"),
+        (1,  days_ago(5),  "delivered", 1329.98, "New York",    "USA"),
+        (1,  days_ago(3),  "delivered",   49.99, "New York",    "USA"),
+        (2,  days_ago(10), "delivered",  399.99, "Los Angeles", "USA"),
+        (2,  days_ago(2),  "shipped",    149.98, "Los Angeles", "USA"),
+        (3,  days_ago(8),  "delivered",   84.98, "Chicago",     "USA"),
+        (4,  days_ago(1),  "confirmed",  199.99, "Houston",     "USA"),
+        (5,  days_ago(4),  "pending",     54.98, "Phoenix",     "USA"),
+        (6,  days_ago(15), "delivered",  169.98, "London",      "UK"),
+        (7,  days_ago(7),  "delivered",   74.98, "Toronto",     "Canada"),
+        (8,  days_ago(6),  "shipped",    129.99, "Sydney",      "Australia"),
+        (9,  days_ago(3),  "pending",     39.99, "Mumbai",      "India"),
+        (10, days_ago(2),  "confirmed",  179.98, "Berlin",      "Germany"),
     ]
     for cust_id, date, status, total, city, country in orders:
         cursor.execute("""
