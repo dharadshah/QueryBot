@@ -6,17 +6,26 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings
 
-CONNECTION_STRING = (
-    f"DRIVER={{{settings.mssql_driver}}};"
-    f"SERVER={settings.mssql_server};"
-    f"DATABASE={settings.mssql_database};"
-    f"UID={settings.mssql_username};"
-    f"PWD={settings.mssql_password};"
-)
-
+def get_connection_string() -> str:
+    if settings.mssql_use_windows_auth:
+        return (
+            f"DRIVER={{{settings.mssql_driver}}};"
+            f"SERVER={settings.mssql_server};"
+            f"DATABASE={settings.mssql_database};"
+            f"Trusted_Connection=yes;"
+            f"TrustServerCertificate=yes;"
+        )
+    return (
+        f"DRIVER={{{settings.mssql_driver}}};"
+        f"SERVER={settings.mssql_server};"
+        f"DATABASE={settings.mssql_database};"
+        f"UID={settings.mssql_username};"
+        f"PWD={settings.mssql_password};"
+        f"TrustServerCertificate=yes;"
+    )
 
 def get_connection():
-    return pyodbc.connect(CONNECTION_STRING)
+    return pyodbc.connect(get_connection_string())
 
 
 def create_tables(cursor):

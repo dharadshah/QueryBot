@@ -10,6 +10,7 @@ class Base(DeclarativeBase):
     pass
 
 
+# This engine is only for our system's own audit table
 engine = create_engine(
     settings.db_connection_string,
     echo=settings.app_env == "development",
@@ -37,8 +38,18 @@ def verify_connection() -> bool:
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        logger.info("Database connection verified successfully")
+        logger.info("Audit database connection verified successfully")
         return True
     except Exception as e:
-        logger.error("Database connection failed: %s", str(e))
+        logger.error("Audit database connection failed: %s", str(e))
         return False
+
+
+def create_audit_tables() -> None:
+    try:
+        from app.models.audit import QueryAudit  # noqa: F401 - ensures model is registered
+        Base.metadata.create_all(bind=engine)
+        logger.info("Audit tables created or verified successfully")
+    except Exception as e:
+        logger.error("Failed to create audit tables: %s", str(e))
+        raise
