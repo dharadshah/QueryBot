@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -16,6 +16,7 @@ class QueryAudit(Base):
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     rows_returned: Mapped[int] = mapped_column(Integer, nullable=True)
     execution_time_ms: Mapped[int] = mapped_column(Integer, nullable=True)
+    plan_analysis: Mapped[str] = mapped_column(Text, nullable=True)   # new
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (

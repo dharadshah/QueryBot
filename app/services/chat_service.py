@@ -41,7 +41,9 @@ def _write_audit_record(
     retry_count: int,
     rows_returned: int,
     execution_time_ms: int,
+    plan_analysis: dict = None,
 ) -> None:
+    import json
     db = SessionLocal()
     try:
         record = QueryAudit(
@@ -53,6 +55,7 @@ def _write_audit_record(
             retry_count=retry_count,
             rows_returned=rows_returned,
             execution_time_ms=execution_time_ms,
+            plan_analysis=json.dumps(plan_analysis) if plan_analysis else None,
             created_at=datetime.utcnow(),
         )
         db.add(record)

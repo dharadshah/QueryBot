@@ -183,7 +183,6 @@ def _check_execution_plan(sql: str) -> ValidationOutcome:
     result = check_query_plan(sql)
 
     if not result["success"]:
-        # Fail open — if we cannot get the plan, do not block the query
         logger.warning(
             EXECUTION_PLAN_CHECK_FAILED.format(error=result["error"])
         )
@@ -211,6 +210,20 @@ def _check_execution_plan(sql: str) -> ValidationOutcome:
             ),
         )
 
+    # Log the clean plan summary even when approved
+    logger.info(
+        "Execution plan check passed",
+        extra={
+            "agent": AgentName.QUERY_VALIDATOR,
+            "event": EventName.HARD_RULE_PASSED,
+            "session_id": None,
+            "payload": {
+                "max_estimated_rows": result["max_estimated_rows"],
+                "table_scans": result["table_scans"],
+                "missing_indexes": result["missing_indexes"],
+            },
+        },
+    )
     return ValidationOutcome(verdict=ValidationResult.APPROVED)
 
 def run_hard_rules(sql: str, agent_logger: AgentLogger) -> ValidationOutcome:

@@ -10,11 +10,11 @@ setup_logging("INFO")
 
 questions = [
     # Original tests
-     #"Show me all products in the electronics category",
-     #"What are the total sales per customer",
-     #"List all pending orders with customer names",
-     #"Which products are out of stock",
-     #"List all orders",
+    "Show me all products in the electronics category",
+    "What are the total sales per customer",
+    "List all pending orders with customer names",
+    "Which products are out of stock",
+    "List all orders",
     # Aggregation tests
     "How many products are in the electronics category?",
     "Which product has the maximum sale in the past month? How much?",
