@@ -47,7 +47,8 @@ def verify_connection() -> bool:
 
 def create_audit_tables() -> None:
     try:
-        from app.models.audit import QueryAudit  # noqa: F401 - ensures model is registered
+        from app.models.audit import QueryAudit          # noqa: F401
+        from app.models.conversation import ConversationHistory  # noqa: F401
         Base.metadata.create_all(bind=engine)
         logger.info("Audit tables created or verified successfully")
     except Exception as e:

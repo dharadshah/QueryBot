@@ -8,22 +8,28 @@ QUERY_GENERATOR_SYSTEM_PROMPT = (
     "4. Always use table aliases for clarity when joining multiple tables.\n"
     "5. Always join tables using explicit JOIN ... ON syntax. Never use implicit comma joins.\n"
     "6. Use indexed columns in WHERE and JOIN conditions wherever possible.\n"
-    "7. Do not include comments, explanations, or markdown in your response.\n"
-    "8. Return only the raw SQL query and nothing else."
+    "7. If a conversation history is provided, use it to resolve references in the current question "
+    "(e.g. 'show me only the delivered ones' refers to the previous query's subject).\n"
+    "8. Do not include comments, explanations, or markdown in your response.\n"
+    "9. Return only the raw SQL query and nothing else."
 )
 
 QUERY_GENERATOR_USER_PROMPT = (
+    "{conversation_history}"
+    "{conversation_separator}"
     "Schema context:\n{schema_context}\n\n"
-    "User question: {user_question}\n\n"
+    "Current question: {user_question}\n\n"
     "Write the T-SQL SELECT query that answers this question. "
     "Remember to include TOP {max_rows} in the SELECT clause."
 )
 
 QUERY_GENERATOR_RETRY_PROMPT = (
+    "{conversation_history}"
+    "{conversation_separator}"
     "The query you generated was rejected for the following reason:\n"
     "{rejection_reason}\n\n"
     "Schema context:\n{schema_context}\n\n"
-    "User question: {user_question}\n\n"
+    "Current question: {user_question}\n\n"
     "Rewrite the T-SQL SELECT query fixing the issue described above. "
     "Remember to include TOP {max_rows} in the SELECT clause. "
     "Return only the raw SQL query and nothing else."
@@ -31,7 +37,8 @@ QUERY_GENERATOR_RETRY_PROMPT = (
 
 LLM_GUARDRAIL_SYSTEM_PROMPT = (
     "You are a SQL query safety and correctness reviewer for a Microsoft SQL Server database. "
-    "You will be given a user question, the database schema context, and a generated SQL query. "
+    "You will be given a user question, the database schema context, an optional conversation "
+    "history, and a generated SQL query. "
     "Your job is to evaluate whether the query correctly and safely answers the user question.\n\n"
     "Evaluate the following:\n"
     "1. Does the query actually answer what the user asked?\n"
@@ -39,7 +46,9 @@ LLM_GUARDRAIL_SYSTEM_PROMPT = (
     "3. Are the WHERE conditions appropriate and not overly broad?\n"
     "4. Could this query return misleading or incorrect results?\n"
     "5. Is there any risk of returning data the user should not see?\n"
-    "6. Does the user question imply they want ALL results with no filter "
+    "6. If conversation history is provided, does the query correctly resolve "
+    "references to prior questions (e.g. 'the delivered ones', 'those customers')?\n"
+    "7. Does the user question imply they want ALL results with no filter "
     "(e.g. 'list all', 'show all', 'give me every', 'how many total')? "
     "If so, and the query has a TOP clause that may truncate results, verdict must be WARN.\n\n"
     "Respond with a JSON object only, no markdown, no explanation outside the JSON.\n"
@@ -51,6 +60,8 @@ LLM_GUARDRAIL_SYSTEM_PROMPT = (
 )
 
 LLM_GUARDRAIL_USER_PROMPT = (
+    "{conversation_history}"
+    "{conversation_separator}"
     "User question: {user_question}\n\n"
     "Schema context:\n{schema_context}\n\n"
     "Generated SQL query:\n{sql_query}\n\n"
@@ -69,6 +80,7 @@ RESPONSE_SYNTHESISER_SYSTEM_PROMPT = (
     "5. Do not mention SQL, databases, or technical details in your response.\n"
     "6. Do not use emojis or icons in your response."
 )
+
 
 RESPONSE_SYNTHESISER_USER_PROMPT = (
     "User question: {user_question}\n\n"

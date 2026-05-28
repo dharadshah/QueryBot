@@ -273,9 +273,12 @@ def run_llm_guardrail(
     question: str,
     schema_context: str,
     agent_logger: AgentLogger,
+    conversation_history: str = "",
 ) -> ValidationOutcome:
     try:
         client = get_llm_client()
+
+        conversation_separator = "\n\n" if conversation_history else ""
 
         response = client.chat.completions.create(
             model=settings.active_chat_model,
@@ -287,6 +290,8 @@ def run_llm_guardrail(
                 {
                     "role": "user",
                     "content": LLM_GUARDRAIL_USER_PROMPT.format(
+                        conversation_history=conversation_history,
+                        conversation_separator=conversation_separator,
                         user_question=question,
                         schema_context=schema_context,
                         sql_query=sql,
@@ -372,6 +377,7 @@ def validate_query(
     question: str,
     schema_context: str,
     session_id: str,
+    conversation_history: str = "",
 ) -> ValidationOutcome:
     agent_logger = AgentLogger(
         agent_name=AgentName.QUERY_VALIDATOR,
@@ -384,7 +390,6 @@ def validate_query(
         payload={"sql": sql},
     )
 
-    # Layer 1 — Hard rules first, always
     hard_rule_outcome = run_hard_rules(sql, agent_logger)
     if not hard_rule_outcome.approved:
         agent_logger.warning(
@@ -398,9 +403,9 @@ def validate_query(
         )
         return hard_rule_outcome
 
-    # Layer 2 — LLM guardrail, only if hard rules pass
-    llm_outcome = run_llm_guardrail(sql, question, schema_context, agent_logger)
-
+    llm_outcome = run_llm_guardrail(
+        sql, question, schema_context, agent_logger, conversation_history
+    )
     if not llm_outcome.approved:
         agent_logger.warning(
             VALIDATION_REJECTED.format(reason=llm_outcome.reason),

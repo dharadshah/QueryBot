@@ -28,6 +28,11 @@ from app.constants.messages import (
     QUERY_FAILED_USER,
     MAX_RETRIES_USER,
 )
+from app.services.conversation_store import (
+    load_history,
+    save_turn,
+    format_history_for_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +77,10 @@ def process_chat(
 ) -> ChatResponse:
     # Generate or use provided session ID
     session_id = request.session_id or str(uuid.uuid4())
+
+    # Load conversation history for this session
+    history = load_history(session_id)
+    conversation_history = format_history_for_prompt(history)
 
     if user_context is None:
         user_context = UserContext()
@@ -137,11 +146,13 @@ def process_chat(
                 agent=AgentName.QUERY_GENERATOR,
                 input_summary=request.question,
             )
+            # Generate
             sql = generate_query(
                 question=request.question,
                 schema_context=schema_context,
                 session_id=session_id,
                 rejection_reason=last_rejection_reason,
+                conversation_history=conversation_history,
             )
             gen_span.end(success=True, output_summary=sql)
             final_sql = sql
@@ -156,6 +167,7 @@ def process_chat(
                 question=request.question,
                 schema_context=schema_context,
                 session_id=session_id,
+                conversation_history=conversation_history,
             )
             val_span.end(
                 success=outcome.approved,
@@ -190,6 +202,13 @@ def process_chat(
                 MAX_RETRIES_EXCEEDED.format(max_retries=AppConfig.MAX_RETRIES),
                 event=EventName.MAX_RETRIES_EXCEEDED,
                 payload={"retry_count": retry_count},
+            )
+             # Save this exchange to conversation history
+            save_turn(
+                session_id=session_id,
+                user_question=request.question,
+                generated_sql=approved_sql,
+                answer=answer,
             )
             trace.end_session(success=False, error=MAX_RETRIES_USER)
             agent_logger.info(

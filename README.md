@@ -39,6 +39,7 @@ User Question
     - TOP clause must be present
     - No cartesian joins (implicit comma joins)
     - Valid T-SQL syntax (sqlglot parser)
+    - Execution plan check via SET SHOWPLAN_XML ON (pre-execution)
   Layer 2 - LLM Guardrail:
     - Query answers the question correctly
     - Joins are logically correct
@@ -86,6 +87,88 @@ The response includes a note that results may be incomplete due to the
 
 ---
 
+## Query Validation — Two-Layer Approach
+
+Agent 2 uses a hybrid validation strategy. Every generated SQL query must
+pass both layers before it is allowed to execute.
+
+### Layer 1 — Hard Rules (pure Python, no LLM, runs first)
+
+Hard rules are deterministic, instant, and have zero LLM cost. If any
+hard rule fails, the query is rejected immediately without calling the
+LLM guardrail. Rules run in order from cheapest to most expensive.
+
+| Order | Rule | Method | What is blocked |
+|---|---|---|---|
+| 1 | No comment injection | String search | SQL comments: -- and /* */ |
+| 2 | No semicolon stacking | String search | Multiple statements via ; |
+| 3 | Valid T-SQL syntax | sqlglot parser (tsql dialect) | Any parse error |
+| 4 | SELECT only | sqlglot AST root node check | INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, EXEC, MERGE |
+| 5 | No disallowed keywords | Token blocklist + regex | All DML and DDL keywords |
+| 6 | No dangerous system calls | String search | xp_, sp_, OPENROWSET, OPENDATASOURCE, OPENQUERY, BULK INSERT |
+| 7 | TOP clause present | Regex on SELECT | Any SELECT without TOP N |
+| 8 | No cartesian joins | Regex on FROM clause | Comma-separated tables without JOIN ... ON |
+| 9 | Execution plan check | SET SHOWPLAN_XML ON | Table scans on large tables, MSSQL missing index warnings |
+
+**Execution Plan Check (Rule 9) — How it works:**
+
+The query is submitted to MSSQL using `SET SHOWPLAN_XML ON`. This returns
+the estimated execution plan as XML without executing the query — zero
+rows are read, zero data is touched. The XML is parsed to detect:
+
+- `PhysicalOp="Table Scan"` on tables with estimated rows above threshold (1000)
+- `<MissingIndexes>` nodes where MSSQL itself recommends a better index
+
+If either is found, the query is rejected with a descriptive reason and
+Agent 1 is asked to rewrite using indexed columns. The plan analysis is
+logged and persisted to the `query_audit` table for every approved query.
+
+**Why this order matters:**
+
+Comment injection and semicolon checks run before the sqlglot parse
+because they are O(n) string operations. The sqlglot parse runs before
+the keyword blocklist because a parse failure means the AST is unavailable.
+The execution plan check runs last because it makes a database round-trip —
+it only runs when all cheaper checks have already passed.
+
+### Layer 2 — LLM Guardrail (runs only if Layer 1 passes)
+
+The LLM evaluates the query against the original question and schema context,
+checking things that deterministic rules cannot assess — intent, logical
+correctness of joins, and whether the query actually answers what was asked.
+
+| Check | What the LLM evaluates |
+|---|---|
+| Intent match | Does the query answer what the user actually asked? |
+| Join correctness | Are table joins logically valid based on the schema? |
+| WHERE appropriateness | Are filter conditions sensible and not overly broad? |
+| Misleading results | Could the query return data that misrepresents reality? |
+| Unbounded result detection | Does the question imply "all" with no practical limit? |
+
+Returns one of three structured verdicts:
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| APPROVED | Query is correct and safe | Execute immediately |
+| WARN | Query correct but question implies unbounded results | Execute with warning message appended to response |
+| REJECTED | Query is logically incorrect or semantically unsafe | Retry with rejection reason sent back to Agent 1 |
+
+**Why LLM for Layer 2:**
+
+Hard rules can verify syntax and structure but cannot evaluate meaning.
+A query like `SELECT TOP 20 * FROM orders WHERE 1=1` passes all hard rules
+but answers no specific question. The LLM guardrail catches semantic issues
+that deterministic parsing cannot detect.
+
+**Fail-open policy:**
+
+If the LLM guardrail call fails (API timeout, malformed JSON response),
+the validator fails open — the query is approved if it passed all hard rules.
+This prevents LLM availability issues from blocking valid queries. All
+failures are logged for monitoring.
+
+---
+
 ## Observability and Logging
 
 Every agent emits structured JSON log lines. Each line carries:
@@ -113,10 +196,11 @@ in MSSQL for governance, debugging, and client reporting.
 | Database | Microsoft SQL Server Express |
 | Vector Store | ChromaDB (local persistent) |
 | Embeddings | ChromaDB default (local) or OpenAI text-embedding-3-small |
-| LLM (default) | Groq — llama-3.3-70b-versatile (free tier) |
+| LLM (default) | Groq — llama-3.1-8b-instant (free tier) |
 | LLM (alternate) | OpenAI — gpt-4o-mini (paid) |
 | SQL Parsing | sqlglot (T-SQL dialect) |
-| UI | Gradio (Phase 5) |
+| Execution Plan | SET SHOWPLAN_XML ON (pre-execution, no data read) |
+| UI | Gradio 6.x |
 | Package Manager | Poetry |
 | Python | 3.11.9 |
 
@@ -155,7 +239,8 @@ D:\QueryBot\
 │   │   ├── logger.py                Structured JSON logger + AgentLogger
 │   │   └── tracer.py                SessionTrace and AgentSpan
 │   ├── utils/
-│   │   └── llm_client.py            Groq/OpenAI client factory
+│   │   ├── llm_client.py            Groq/OpenAI client factory
+│   │   └── execution_plan.py        SHOWPLAN_XML retrieval and analysis
 │   └── constants/
 │       ├── app_constants.py         Roles, events, rule codes, limits
 │       ├── prompts.py               All LLM prompt templates
@@ -163,13 +248,13 @@ D:\QueryBot\
 ├── seed/
 │   └── seed_data.py                 Standalone eCommerce DB seeder
 ├── ui/
-│   └── gradio_app.py                Gradio chat UI (Phase 5)
+│   └── gradio_app.py                Gradio chat UI
 ├── tests/
 │   ├── manual_test_db_tool.py
 │   ├── manual_test_schema_retriever.py
 │   ├── manual_test_pipeline.py
 │   └── manual_test_full_pipeline.py
-├── run.py                           Starts FastAPI + Gradio (Phase 5)
+├── run.py                           Starts FastAPI + Gradio together
 ├── .env                             Secrets and config (not in Git)
 ├── pyproject.toml
 └── requirements.txt
@@ -234,7 +319,7 @@ poetry run python seed/seed_data.py
 ### 5. Start the application
 
 ```powershell
-poetry run uvicorn app.main:app --reload
+poetry run python run.py
 ```
 
 On first startup the app will:
@@ -242,7 +327,13 @@ On first startup the app will:
 - Create the `query_audit` table
 - Embed the schema into ChromaDB (one time only, idempotent)
 
-### 6. Test the API
+### 6. Access the UI
+
+```
+http://localhost:7860
+```
+
+### 7. Test the API directly
 
 ```
 GET  http://localhost:8000/health
@@ -258,36 +349,9 @@ POST http://localhost:8000/chat
 Switch between Groq and OpenAI with one line in `.env`. No code changes required.
 
 ```env
-LLM_PROVIDER=groq    # uses llama-3.3-70b-versatile — free tier
+LLM_PROVIDER=groq    # uses llama-3.1-8b-instant — free tier
 LLM_PROVIDER=openai  # uses gpt-4o-mini — paid
 ```
-
----
-
-## Query Safety Rules
-
-### Layer 1 — Hard Rules (instant, no LLM cost)
-
-| Rule | What is blocked |
-|---|---|
-| SELECT only | INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, EXEC, MERGE |
-| No system calls | xp_, sp_, OPENROWSET, OPENDATASOURCE, OPENQUERY, BULK INSERT |
-| No injection | SQL comments: -- and /* */ |
-| No stacking | Multiple statements separated by semicolons |
-| TOP required | Any SELECT without a TOP clause |
-| No cartesian joins | Comma-separated tables in FROM clause |
-| Valid syntax | Any T-SQL parse error detected by sqlglot |
-
-### Layer 2 — LLM Guardrail
-
-The LLM reviews the query against the original question and schema context.
-Returns one of three verdicts:
-
-| Verdict | Meaning | Action |
-|---|---|---|
-| APPROVED | Query is correct and safe | Execute immediately |
-| WARN | Query correct but may return incomplete results | Execute with warning message to user |
-| REJECTED | Query is incorrect or unsafe | Retry with rejection reason (up to MAX_RETRIES) |
 
 ---
 
@@ -315,6 +379,7 @@ Every query is written to the `query_audit` table in MSSQL:
 | retry_count | Number of regeneration attempts before approval or failure |
 | rows_returned | Number of rows returned if the query was executed |
 | execution_time_ms | Query execution time in milliseconds |
+| plan_analysis | JSON summary of execution plan (table scans, missing indexes) |
 | created_at | UTC timestamp when the audit record was created |
 
 ---
@@ -323,8 +388,10 @@ Every query is written to the `query_audit` table in MSSQL:
 
 | Phase | Scope |
 |---|---|
-| Phase 5 | Gradio chat UI — simple web interface for the chatbot |
+| Conversation History | Per-session memory so follow-up questions resolve correctly |
 | Phase 6 | User authentication and role-based query filtering |
 | | Guest: product catalogue queries only |
 | | Customer: own orders and purchase history only |
 | | Admin: full access including sales aggregations and audit data |
+| Pytest suite | Automated tests for validator hard rules and orchestrator |
+| Docker | Containerised deployment for cloud environments |

@@ -1,25 +1,31 @@
 import gradio as gr
 import requests
+import uuid
 
 FASTAPI_URL = "http://localhost:8000/chat"
 
 
-def chat(user_message: str, history: list) -> tuple[str, list]:
+def chat(user_message: str, history: list, session_id: str) -> tuple[str, list, str]:
     if not user_message.strip():
-        return "", history
+        return "", history, session_id
+
+    # Generate session ID on first message
+    if not session_id:
+        session_id = str(uuid.uuid4())
 
     try:
         response = requests.post(
             FASTAPI_URL,
-            json={"question": user_message},
+            json={
+                "question": user_message,
+                "session_id": session_id,
+            },
             timeout=60,
         )
         response.raise_for_status()
         data = response.json()
 
         answer = data.get("answer", "No answer returned.")
-        sql = data.get("sql_generated", "")
-        rows = data.get("rows_returned", 0)
         success = data.get("success", False)
         error = data.get("error", None)
 
@@ -30,7 +36,7 @@ def chat(user_message: str, history: list) -> tuple[str, list]:
 
         history.append({"role": "user", "content": user_message})
         history.append({"role": "assistant", "content": display})
-        return "", history
+        return "", history, session_id
 
     except requests.exceptions.ConnectionError:
         error_msg = (
@@ -39,26 +45,30 @@ def chat(user_message: str, history: list) -> tuple[str, list]:
         )
         history.append({"role": "user", "content": user_message})
         history.append({"role": "assistant", "content": error_msg})
-        return "", history
+        return "", history, session_id
 
     except requests.exceptions.Timeout:
         error_msg = "The request timed out. Please try again."
         history.append({"role": "user", "content": user_message})
         history.append({"role": "assistant", "content": error_msg})
-        return "", history
+        return "", history, session_id
 
     except Exception as e:
         error_msg = f"An unexpected error occurred: {str(e)}"
         history.append({"role": "user", "content": user_message})
         history.append({"role": "assistant", "content": error_msg})
-        return "", history
+        return "", history, session_id
 
 
-def clear_chat() -> tuple[list, str]:
-    return [], ""
+def clear_chat() -> tuple[list, str, str]:
+    # Generate a new session ID when chat is cleared
+    return [], "", str(uuid.uuid4())
 
 
 with gr.Blocks() as demo:
+
+    # session_id stored as hidden state — persists across messages
+    session_state = gr.State("")
 
     with gr.Column():
         gr.HTML("<h1 style='text-align:center; color:#0f3460;'>QueryBot</h1>")
@@ -119,19 +129,19 @@ with gr.Blocks() as demo:
 
     submit_btn.click(
         fn=chat,
-        inputs=[question_input, chatbot],
-        outputs=[question_input, chatbot],
+        inputs=[question_input, chatbot, session_state],
+        outputs=[question_input, chatbot, session_state],
     )
 
     question_input.submit(
         fn=chat,
-        inputs=[question_input, chatbot],
-        outputs=[question_input, chatbot],
+        inputs=[question_input, chatbot, session_state],
+        outputs=[question_input, chatbot, session_state],
     )
 
     clear_btn.click(
         fn=clear_chat,
-        outputs=[chatbot, question_input],
+        outputs=[chatbot, question_input, session_state],
     )
 
 

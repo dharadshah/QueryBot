@@ -1,6 +1,4 @@
 import logging
-from groq import Groq
-from openai import OpenAI
 from app.config import settings
 from app.utils.llm_client import get_llm_client
 from app.observability.logger import AgentLogger
@@ -20,14 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 def _clean_sql(raw: str) -> str:
-    """
-    Strips markdown code fences and whitespace from LLM output.
-    LLMs occasionally wrap SQL in ```sql ... ``` even when instructed not to.
-    """
     cleaned = raw.strip()
     if cleaned.startswith("```"):
         lines = cleaned.splitlines()
-        # Remove first line (```sql or ```) and last line (```)
         lines = [l for l in lines if not l.strip().startswith("```")]
         cleaned = "\n".join(lines).strip()
     return cleaned
@@ -38,6 +31,7 @@ def generate_query(
     schema_context: str,
     session_id: str,
     rejection_reason: str = None,
+    conversation_history: str = "",
 ) -> str:
     agent_logger = AgentLogger(
         agent_name=AgentName.QUERY_GENERATOR,
@@ -51,6 +45,7 @@ def generate_query(
             "question": question,
             "is_retry": rejection_reason is not None,
             "rejection_reason": rejection_reason,
+            "has_history": bool(conversation_history),
         },
     )
 
@@ -61,8 +56,12 @@ def generate_query(
             max_rows=AppConfig.MAX_ROWS,
         )
 
+        conversation_separator = "\n\n" if conversation_history else ""
+
         if rejection_reason:
             user_prompt = QUERY_GENERATOR_RETRY_PROMPT.format(
+                conversation_history=conversation_history,
+                conversation_separator=conversation_separator,
                 rejection_reason=rejection_reason,
                 schema_context=schema_context,
                 user_question=question,
@@ -70,6 +69,8 @@ def generate_query(
             )
         else:
             user_prompt = QUERY_GENERATOR_USER_PROMPT.format(
+                conversation_history=conversation_history,
+                conversation_separator=conversation_separator,
                 schema_context=schema_context,
                 user_question=question,
                 max_rows=AppConfig.MAX_ROWS,
