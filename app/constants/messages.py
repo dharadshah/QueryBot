@@ -40,3 +40,13 @@ NO_RESULTS_FOUND = "No results were found for your question."
 QUERY_FAILED_USER = "I was unable to process your question at this time. Please try rephrasing it."
 MAX_RETRIES_USER = "I was unable to generate a valid query for your question after several attempts. Please try rephrasing."
 DB_UNAVAILABLE = "The database is currently unavailable. Please try again later."
+
+# Results cap warning
+RESULTS_CAPPED_WARNING = (
+    "Note: this query returned the maximum of {max_rows} rows. "
+    "There may be additional results beyond what is shown."
+)
+UNBOUNDED_QUERY_WARNING = (
+    "Note: your question asked for all results but output is limited to {max_rows} rows. "
+    "The results shown may be incomplete."
+)

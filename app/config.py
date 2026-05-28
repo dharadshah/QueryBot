@@ -53,6 +53,17 @@ class Settings(BaseSettings):
             f"?driver={self.mssql_driver.replace(' ', '+')}"
             f"&TrustServerCertificate=yes"
         )
+    @property
+    def active_chat_model(self) -> str:
+        if self.llm_provider == "openai":
+            return self.openai_chat_model
+        return self.groq_chat_model
+
+    @property
+    def active_api_key(self) -> str:
+        if self.llm_provider == "openai":
+            return self.openai_api_key
+        return self.groq_api_key
 
 
 settings = Settings()

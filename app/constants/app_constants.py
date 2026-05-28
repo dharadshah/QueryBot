@@ -25,6 +25,7 @@ class OrderStatus:
 class ValidationResult:
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    WARN = "WARN"
 
 
 class AgentName:

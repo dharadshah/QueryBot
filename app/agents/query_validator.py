@@ -37,10 +37,12 @@ class ValidationOutcome:
     verdict: str
     rule_code: str = None
     reason: str = None
+    warn: bool = False
+    warn_message: str = None
 
     @property
     def approved(self) -> bool:
-        return self.verdict == ValidationResult.APPROVED
+        return self.verdict in (ValidationResult.APPROVED, ValidationResult.WARN)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +260,19 @@ def run_llm_guardrail(
             )
             return ValidationOutcome(verdict=ValidationResult.APPROVED, reason=reason)
 
+        if verdict == ValidationResult.WARN:
+            agent_logger.warning(
+                LLM_GUARDRAIL_FAILED.format(reason=reason),
+                event=EventName.LLM_GUARDRAIL_PASSED,
+                payload={"reason": reason, "verdict": "WARN"},
+            )
+            return ValidationOutcome(
+                verdict=ValidationResult.WARN,
+                reason=reason,
+                warn=True,
+                warn_message=reason,
+            )
+
         agent_logger.warning(
             LLM_GUARDRAIL_FAILED.format(reason=reason),
             event=EventName.LLM_GUARDRAIL_FAILED,
@@ -329,6 +344,7 @@ def validate_query(
 
     # Layer 2 — LLM guardrail, only if hard rules pass
     llm_outcome = run_llm_guardrail(sql, question, schema_context, agent_logger)
+
     if not llm_outcome.approved:
         agent_logger.warning(
             VALIDATION_REJECTED.format(reason=llm_outcome.reason),
@@ -337,6 +353,14 @@ def validate_query(
                 "layer": "llm_guardrail",
                 "reason": llm_outcome.reason,
             },
+        )
+        return llm_outcome
+
+    if llm_outcome.warn:
+        agent_logger.warning(
+            "Query approved with warning: {warn}".format(warn=llm_outcome.warn_message),
+            event=EventName.LLM_GUARDRAIL_PASSED,
+            payload={"warn_message": llm_outcome.warn_message},
         )
         return llm_outcome
 

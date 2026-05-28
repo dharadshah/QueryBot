@@ -38,11 +38,14 @@ LLM_GUARDRAIL_SYSTEM_PROMPT = (
     "2. Are the table joins logically correct based on the schema?\n"
     "3. Are the WHERE conditions appropriate and not overly broad?\n"
     "4. Could this query return misleading or incorrect results?\n"
-    "5. Is there any risk of returning data the user should not see?\n\n"
+    "5. Is there any risk of returning data the user should not see?\n"
+    "6. Does the user question imply they want ALL results with no filter "
+    "(e.g. 'list all', 'show all', 'give me every', 'how many total')? "
+    "If so, and the query has a TOP clause that may truncate results, verdict must be WARN.\n\n"
     "Respond with a JSON object only, no markdown, no explanation outside the JSON.\n"
     "Format:\n"
     "{{\n"
-    '  "verdict": "APPROVED" or "REJECTED",\n'
+    '  "verdict": "APPROVED", "REJECTED", or "WARN",\n'
     '  "reason": "brief explanation of your decision"\n'
     "}}"
 )
