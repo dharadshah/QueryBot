@@ -38,24 +38,29 @@ def get_ecommerce_connection() -> pyodbc.Connection:
 
 def enforce_top_clause(sql: str, max_rows: int = AppConfig.MAX_ROWS) -> tuple[str, bool]:
     """
-    Ensures the query contains a TOP clause.
-    Returns the (possibly modified) SQL and a bool indicating if TOP was injected.
+    Enforces a ceiling of max_rows on the TOP clause.
+    - If no TOP clause exists: inject TOP max_rows
+    - If TOP clause exists with value <= max_rows: leave it unchanged
+    - If TOP clause exists with value > max_rows: replace with TOP max_rows
+    Returns the (possibly modified) SQL and a bool indicating if it was changed.
     """
-    # Check if TOP clause already exists (case insensitive)
-    top_pattern = re.compile(r'\bSELECT\s+TOP\s*\(\s*\d+\s*\)\s*|\bSELECT\s+TOP\s+\d+\s+', re.IGNORECASE)
+    top_pattern = re.compile(
+        r'\bSELECT\s+TOP\s*\(?\s*(\d+)\s*\)?',
+        re.IGNORECASE,
+    )
 
-    if top_pattern.search(sql):
-        # Replace any existing TOP value with our hard cap
-        enforced = re.sub(
-            r'(SELECT\s+TOP\s*\(?\s*)\d+(\s*\)?)',
-            lambda m: f"SELECT TOP {max_rows} ",
-            sql,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        return enforced, False
+    match = top_pattern.search(sql)
 
-    # Inject TOP clause after SELECT keyword
+    if match:
+        existing_value = int(match.group(1))
+        if existing_value <= max_rows:
+            # Within ceiling — leave unchanged
+            return sql, False
+        # Exceeds ceiling — replace with max_rows
+        enforced = top_pattern.sub(f"SELECT TOP {max_rows}", sql, count=1)
+        return enforced, True
+
+    # No TOP clause — inject it
     enforced = re.sub(
         r'\bSELECT\b',
         f"SELECT TOP {max_rows}",
