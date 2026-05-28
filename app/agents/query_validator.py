@@ -28,6 +28,8 @@ from app.constants.messages import (
     VALIDATION_APPROVED,
     VALIDATION_REJECTED,
 )
+from app.utils.execution_plan import check_query_plan
+
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +173,46 @@ def _check_cartesian_join(sql: str) -> ValidationOutcome:
     return ValidationOutcome(verdict=ValidationResult.APPROVED)
 
 
+def _check_execution_plan(sql: str) -> ValidationOutcome:
+    from app.constants.messages import (
+        EXECUTION_PLAN_TABLE_SCAN,
+        EXECUTION_PLAN_MISSING_INDEX,
+        EXECUTION_PLAN_CHECK_FAILED,
+    )
+
+    result = check_query_plan(sql)
+
+    if not result["success"]:
+        # Fail open — if we cannot get the plan, do not block the query
+        logger.warning(
+            EXECUTION_PLAN_CHECK_FAILED.format(error=result["error"])
+        )
+        return ValidationOutcome(verdict=ValidationResult.APPROVED)
+
+    if result["table_scans"]:
+        scan = result["table_scans"][0]
+        return ValidationOutcome(
+            verdict=ValidationResult.REJECTED,
+            rule_code=HardRuleCode.EXECUTION_PLAN,
+            reason=EXECUTION_PLAN_TABLE_SCAN.format(
+                table=scan["table"],
+                rows=scan["estimated_rows"],
+            ),
+        )
+
+    if result["missing_indexes"]:
+        missing = result["missing_indexes"][0]
+        return ValidationOutcome(
+            verdict=ValidationResult.REJECTED,
+            rule_code=HardRuleCode.EXECUTION_PLAN,
+            reason=EXECUTION_PLAN_MISSING_INDEX.format(
+                table=missing["table"],
+                columns=", ".join(missing["columns"]),
+            ),
+        )
+
+    return ValidationOutcome(verdict=ValidationResult.APPROVED)
+
 def run_hard_rules(sql: str, agent_logger: AgentLogger) -> ValidationOutcome:
     rules = [
         _check_comment_injection,
@@ -181,6 +223,7 @@ def run_hard_rules(sql: str, agent_logger: AgentLogger) -> ValidationOutcome:
         _check_dangerous_system_calls,
         _check_top_clause,
         _check_cartesian_join,
+        _check_execution_plan,       # runs last — makes a DB call
     ]
 
     for rule_fn in rules:

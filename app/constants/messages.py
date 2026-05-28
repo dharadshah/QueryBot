@@ -50,3 +50,17 @@ UNBOUNDED_QUERY_WARNING = (
     "Note: your question asked for all results but output is limited to {max_rows} rows. "
     "The results shown may be incomplete."
 )
+
+EXECUTION_PLAN_TABLE_SCAN = (
+    "Query causes a full table scan on '{table}' "
+    "with an estimated {rows} rows. "
+    "Rewrite the query to use indexed columns in the WHERE or JOIN condition."
+)
+EXECUTION_PLAN_MISSING_INDEX = (
+    "MSSQL recommends a missing index on '{table}' "
+    "for columns: {columns}. "
+    "Rewrite the query to use existing indexed columns where possible."
+)
+EXECUTION_PLAN_CHECK_FAILED = (
+    "Execution plan could not be retrieved: {error}"
+)

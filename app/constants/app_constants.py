@@ -82,6 +82,7 @@ class HardRuleCode:
     MISSING_TOP_CLAUSE = "MISSING_TOP_CLAUSE"
     CARTESIAN_JOIN = "CARTESIAN_JOIN"
     SYNTAX_ERROR = "SYNTAX_ERROR"
+    EXECUTION_PLAN = "EXECUTION_PLAN"        
 
 
 class DisallowedKeyword:
