@@ -53,14 +53,16 @@ def synthesise_response(
             )
             return NO_RESULTS_FOUND
 
-        # Detect COUNT queries that returned a zero value
-        # A COUNT query returns exactly one row with a single numeric column
+        # Detect COUNT queries returning zero
         if len(rows) == 1:
             values = list(rows[0].values())
             if len(values) == 1 and isinstance(values[0], int) and values[0] == 0:
-                # Let the LLM answer naturally — "There are 0 pending orders to Canada"
-                # rather than the generic "No results found" message
-                pass
+                agent_logger.info(
+                    RESPONSE_SYNTHESIS_COMPLETED,
+                    event=EventName.RESPONSE_SYNTHESIS_COMPLETED,
+                    payload={"row_count": 0},
+                )
+                return f"There are no records matching your question: {question}"
 
         # Format rows as readable text for the LLM
         formatted_rows = _format_rows(rows)

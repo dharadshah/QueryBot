@@ -239,7 +239,11 @@ def run():
     seed_categories(cursor)
     seed_products(cursor)
     seed_customers(cursor)
+    conn.commit()
+
     seed_orders(cursor)
+    conn.commit()          # commit orders before reading IDs for order_items
+
     seed_order_items(cursor)
     conn.commit()
 
