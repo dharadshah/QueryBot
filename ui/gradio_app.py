@@ -5,13 +5,21 @@ import uuid
 FASTAPI_URL = "http://localhost:8000/chat"
 
 
-def chat(user_message: str, history: list, session_id: str) -> tuple[str, list, str]:
+def chat(user_message: str, history: list, session_id: str):
     if not user_message.strip():
-        return "", history, session_id
+        yield "", history, session_id
+        return
 
     # Generate session ID on first message
     if not session_id:
         session_id = str(uuid.uuid4())
+
+    # Show user message immediately while waiting for response
+    history = history + [
+        {"role": "user", "content": user_message},
+        {"role": "assistant", "content": "..."},
+    ]
+    yield "", history, session_id
 
     try:
         response = requests.post(
@@ -20,7 +28,7 @@ def chat(user_message: str, history: list, session_id: str) -> tuple[str, list, 
                 "question": user_message,
                 "session_id": session_id,
             },
-            timeout=60,
+            timeout=120,
         )
         response.raise_for_status()
         data = response.json()
@@ -31,53 +39,94 @@ def chat(user_message: str, history: list, session_id: str) -> tuple[str, list, 
 
         display = answer
 
-        history.append({"role": "user", "content": user_message})
-        history.append({"role": "assistant", "content": display})
-        return "", history, session_id
+        # Replace the placeholder with the real answer
+        history[-1] = {"role": "assistant", "content": display}
+        yield "", history, session_id
 
     except requests.exceptions.ConnectionError:
-        error_msg = (
-            "Cannot connect to the QueryBot API. "
-            "Please make sure the FastAPI server is running on port 8000."
-        )
-        history.append({"role": "user", "content": user_message})
-        history.append({"role": "assistant", "content": error_msg})
-        return "", history, session_id
+        history[-1] = {
+            "role": "assistant",
+            "content": (
+                "Cannot connect to the QueryBot API. "
+                "Please make sure the FastAPI server is running on port 8000."
+            ),
+        }
+        yield "", history, session_id
 
     except requests.exceptions.Timeout:
-        error_msg = "The request timed out. Please try again."
-        history.append({"role": "user", "content": user_message})
-        history.append({"role": "assistant", "content": error_msg})
-        return "", history, session_id
+        history[-1] = {
+            "role": "assistant",
+            "content": "The request timed out. Please try again.",
+        }
+        yield "", history, session_id
 
     except Exception as e:
-        error_msg = f"An unexpected error occurred: {str(e)}"
-        history.append({"role": "user", "content": user_message})
-        history.append({"role": "assistant", "content": error_msg})
-        return "", history, session_id
+        history[-1] = {
+            "role": "assistant",
+            "content": f"An unexpected error occurred: {str(e)}",
+        }
+        yield "", history, session_id
 
 
 def clear_chat() -> tuple[list, str, str]:
-    # Generate a new session ID when chat is cleared
     return [], "", str(uuid.uuid4())
 
 
-with gr.Blocks() as demo:
+CSS = """
+.gradio-container, .gradio-container * {
+    color: #000000 !important;
+    font-size: 20px !important;
+}
 
-    # session_id stored as hidden state — persists across messages
+.svelte-1ed2p3z, .message, .message p, .message span,
+.message div, .prose, .prose p, .prose span {
+    color: #000000 !important;
+    font-size: 20px !important;
+}
+
+textarea, textarea * {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    font-size: 20px !important;
+}
+
+[data-testid="bot"] * {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    font-size: 20px !important;
+}
+
+[data-testid="user"] * {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    font-size: 20px !important;
+}
+
+
+
+/* Buttons and labels */
+button, label, .label-wrap {
+    font-size: 20px !important;
+}
+"""
+
+with gr.Blocks(css=CSS) as demo:
+
     session_state = gr.State("")
 
     with gr.Column():
-        gr.HTML("<h1 style='text-align:center; color:#0f3460;'>QueryBot</h1>")
         gr.HTML(
-            "<p style='text-align:center; color:#555;'>"
+            "<h1 style='text-align:center; color:#0f3460; margin-bottom:4px;'>QueryBot</h1>"
+        )
+        gr.HTML(
+            "<p style='text-align:center; color:#333333; font-size:15px; margin-bottom:16px;'>"
             "Ask questions about your eCommerce data in plain English."
             "</p>"
         )
 
         chatbot = gr.Chatbot(
             label="",
-            height=480,
+            height=500,
             show_label=False,
             render_markdown=True,
             layout="bubble",
@@ -106,7 +155,7 @@ with gr.Blocks() as demo:
             )
 
         gr.HTML(
-            "<div style='text-align:center; margin-top:12px; color:#888; font-size:0.85rem;'>"
+            "<div style='text-align:center; margin-top:10px; color:#555555; font-size:13px;'>"
             "Results are limited to 20 rows per query. "
             "Only SELECT queries are permitted."
             "</div>"

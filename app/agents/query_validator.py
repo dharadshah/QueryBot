@@ -299,6 +299,7 @@ def run_llm_guardrail(
                 },
             ],
             temperature=0.0,
+            max_tokens=200,
         )
 
         raw_response = response.choices[0].message.content.strip()
@@ -403,9 +404,19 @@ def validate_query(
         )
         return hard_rule_outcome
 
+    # Layer 2 — LLM guardrail, only if hard rules pass and guardrail is enabled
+    if not settings.enable_llm_guardrail:
+        agent_logger.info(
+            "LLM guardrail disabled — skipping",
+            event=EventName.VALIDATION_APPROVED,
+            payload={"sql": sql},
+        )
+        return ValidationOutcome(verdict=ValidationResult.APPROVED)
+
     llm_outcome = run_llm_guardrail(
         sql, question, schema_context, agent_logger, conversation_history
     )
+    
     if not llm_outcome.approved:
         agent_logger.warning(
             VALIDATION_REJECTED.format(reason=llm_outcome.reason),

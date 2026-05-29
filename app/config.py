@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
+    use_openai_embeddings: bool = False
+    enable_llm_guardrail: bool = True
+
+
 
     # LLM Provider
     llm_provider: str = "groq"

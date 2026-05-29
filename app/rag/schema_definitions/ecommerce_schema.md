@@ -69,6 +69,8 @@ Relationships:
 - Each product belongs to one category (many-to-one with categories table).
 - One product can appear in many order items (one-to-many with order_items table).
 
+Note: products table does NOT have shipping or location columns.
+Shipping destination is stored in the orders table (shipping_city, shipping_country).
 ---
 
 ## Table: customers
@@ -122,6 +124,8 @@ Relationships:
 - Each order belongs to one customer (many-to-one with customers table).
 - One order can have many order items (one-to-many with order_items table).
 
+Note: shipping_city and shipping_country refer to where the order was shipped TO,
+not the customer's address. Use these columns for delivery location queries.
 ---
 
 ## Table: order_items

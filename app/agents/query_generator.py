@@ -83,6 +83,7 @@ def generate_query(
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.0,
+            max_tokens=500,
         )
 
         raw_sql = response.choices[0].message.content

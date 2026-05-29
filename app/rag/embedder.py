@@ -21,7 +21,7 @@ def get_chroma_client() -> chromadb.PersistentClient:
 
 
 def get_embedding_function():
-    if settings.llm_provider == "openai":
+    if settings.llm_provider == "openai" and settings.use_openai_embeddings:
         from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
         return OpenAIEmbeddingFunction(
             api_key=settings.openai_api_key,
