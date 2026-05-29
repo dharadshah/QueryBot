@@ -54,6 +54,9 @@ LLM_GUARDRAIL_SYSTEM_PROMPT = (
     "A question like 'list all pending orders' has a filter (pending) so it is NOT unbounded — use APPROVED. "
     "A question like 'list all orders' with no filter IS unbounded — use WARN. "
     "When in doubt, use APPROVED not WARN.\n\n"
+    "8. IMPORTANT: SELECT TOP N COUNT(...) is valid T-SQL. COUNT always returns "
+    "a single row regardless of TOP N. Do NOT reject a query solely because "
+    "it uses COUNT with a TOP clause — this is acceptable syntax.\n\n"
     "Format:\n"
     "{{\n"
     '  "verdict": "APPROVED", "REJECTED", or "WARN",\n'

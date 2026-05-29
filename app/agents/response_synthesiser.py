@@ -85,7 +85,7 @@ def synthesise_response(
                 },
             ],
             temperature=0.2,
-            max_tokens=800,
+            max_tokens=300,
         )
 
         answer = response.choices[0].message.content.strip()

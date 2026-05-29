@@ -299,7 +299,7 @@ def run_llm_guardrail(
                 },
             ],
             temperature=0.0,
-            max_tokens=200,
+            max_tokens=150,
         )
 
         raw_response = response.choices[0].message.content.strip()
@@ -416,7 +416,7 @@ def validate_query(
     llm_outcome = run_llm_guardrail(
         sql, question, schema_context, agent_logger, conversation_history
     )
-    
+
     if not llm_outcome.approved:
         agent_logger.warning(
             VALIDATION_REJECTED.format(reason=llm_outcome.reason),
