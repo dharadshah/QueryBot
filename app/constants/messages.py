@@ -74,3 +74,17 @@ WRITE_INTENT_DETECTED = (
     "I can only retrieve information from the database. "
     "Actions like adding, updating, or deleting records are not permitted."
 )
+
+# Permission messages
+PERMISSION_DENIED_GUEST = (
+    "As a guest you can only query product and category information. "
+    "Please log in to access order and customer data."
+)
+
+PERMISSION_DENIED_CUSTOMER_OTHER = (
+    "You can only access your own order and account information."
+)
+
+PERMISSION_DENIED_TABLE = (
+    "Your current role does not have permission to access the requested data."
+)

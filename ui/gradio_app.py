@@ -3,53 +3,101 @@ import requests
 import uuid
 
 FASTAPI_URL = "http://localhost:8000/chat"
+CUSTOMERS_URL = "http://localhost:8000/customers"
+
+CSS = """
+.gradio-container, .gradio-container * {
+    color: #000000 !important;
+    font-size: 20px !important;
+}
+.svelte-1ed2p3z, .message, .message p, .message span,
+.message div, .prose, .prose p, .prose span {
+    color: #000000 !important;
+    font-size: 20px !important;
+}
+textarea, textarea * {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    font-size: 20px !important;
+}
+[data-testid="bot"] * {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    font-size: 20px !important;
+}
+[data-testid="user"] * {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    font-size: 20px !important;
+}
+[data-testid="user"] {
+    background-color: #1a1a2e !important;
+}
+button, label, .label-wrap {
+    font-size: 20px !important;
+}
+"""
 
 
-def chat(user_message: str, history: list, session_id: str):
+def load_customers() -> list[tuple[str, int]]:
+    try:
+        response = requests.get(CUSTOMERS_URL, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        return [(c["name"], c["customer_id"]) for c in data]
+    except Exception:
+        return []
+
+
+def on_role_change(role: str) -> gr.update:
+    if role == "customer":
+        return gr.update(visible=True)
+    return gr.update(visible=False)
+
+
+def chat(
+    user_message: str,
+    history: list,
+    session_id: str,
+    role: str,
+    customer_choice: int,
+) -> tuple:
     if not user_message.strip():
         yield "", history, session_id
         return
 
-    # Generate session ID on first message
     if not session_id:
         session_id = str(uuid.uuid4())
 
-    # Show user message immediately while waiting for response
+    # Show user message immediately
     history = history + [
         {"role": "user", "content": user_message},
         {"role": "assistant", "content": "..."},
     ]
     yield "", history, session_id
 
+    # Build request payload
+    payload = {
+        "question": user_message,
+        "session_id": session_id,
+        "role": role.lower(),
+    }
+
+    if role.lower() == "customer" and customer_choice:
+        payload["customer_id"] = customer_choice
+
     try:
-        response = requests.post(
-            FASTAPI_URL,
-            json={
-                "question": user_message,
-                "session_id": session_id,
-            },
-            timeout=120,
-        )
+        response = requests.post(FASTAPI_URL, json=payload, timeout=120)
         response.raise_for_status()
         data = response.json()
-
         answer = data.get("answer", "No answer returned.")
-        success = data.get("success", False)
-        error = data.get("error", None)
-
-        display = answer
-
-        # Replace the placeholder with the real answer
-        history[-1] = {"role": "assistant", "content": display}
+        history[-1] = {"role": "assistant", "content": answer}
         yield "", history, session_id
 
     except requests.exceptions.ConnectionError:
         history[-1] = {
             "role": "assistant",
-            "content": (
-                "Cannot connect to the QueryBot API. "
-                "Please make sure the FastAPI server is running on port 8000."
-            ),
+            "content": "Cannot connect to the QueryBot API. Please make sure the server is running.",
         }
         yield "", history, session_id
 
@@ -63,52 +111,14 @@ def chat(user_message: str, history: list, session_id: str):
     except Exception as e:
         history[-1] = {
             "role": "assistant",
-            "content": f"An unexpected error occurred: {str(e)}",
+            "content": "An unexpected error occurred. Please try again.",
         }
         yield "", history, session_id
 
 
-def clear_chat() -> tuple[list, str, str]:
+def clear_chat() -> tuple:
     return [], "", str(uuid.uuid4())
 
-
-CSS = """
-.gradio-container, .gradio-container * {
-    color: #000000 !important;
-    font-size: 20px !important;
-}
-
-.svelte-1ed2p3z, .message, .message p, .message span,
-.message div, .prose, .prose p, .prose span {
-    color: #000000 !important;
-    font-size: 20px !important;
-}
-
-textarea, textarea * {
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    font-size: 20px !important;
-}
-
-[data-testid="bot"] * {
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    font-size: 20px !important;
-}
-
-[data-testid="user"] * {
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    font-size: 20px !important;
-}
-
-
-
-/* Buttons and labels */
-button, label, .label-wrap {
-    font-size: 20px !important;
-}
-"""
 
 with gr.Blocks(css=CSS) as demo:
 
@@ -124,9 +134,23 @@ with gr.Blocks(css=CSS) as demo:
             "</p>"
         )
 
+        with gr.Row():
+            role_selector = gr.Dropdown(
+                choices=["Guest", "Customer", "Admin"],
+                value="Guest",
+                label="Access Role",
+                scale=1,
+            )
+            customer_selector = gr.Dropdown(
+                choices=[],
+                label="Select Customer",
+                visible=False,
+                scale=2,
+            )
+
         chatbot = gr.Chatbot(
             label="",
-            height=500,
+            height=460,
             show_label=False,
             render_markdown=True,
             layout="bubble",
@@ -173,15 +197,33 @@ with gr.Blocks(css=CSS) as demo:
             label="Example Questions",
         )
 
+    # Load customers when role switches to Customer
+    role_selector.change(
+        fn=on_role_change,
+        inputs=[role_selector],
+        outputs=[customer_selector],
+    )
+
+    # Load customers dynamically when dropdown becomes visible
+    role_selector.change(
+        fn=lambda role: gr.update(
+            choices=load_customers() if role.lower() == "customer" else [],
+            visible=role.lower() == "customer",
+            value=None,
+        ),
+        inputs=[role_selector],
+        outputs=[customer_selector],
+    )
+
     submit_btn.click(
         fn=chat,
-        inputs=[question_input, chatbot, session_state],
+        inputs=[question_input, chatbot, session_state, role_selector, customer_selector],
         outputs=[question_input, chatbot, session_state],
     )
 
     question_input.submit(
         fn=chat,
-        inputs=[question_input, chatbot, session_state],
+        inputs=[question_input, chatbot, session_state, role_selector, customer_selector],
         outputs=[question_input, chatbot, session_state],
     )
 

@@ -19,11 +19,15 @@ from app.services.conversation_store import (
     format_history_for_prompt,
 )
 from app.services.query_cache import get_cached_query, set_cached_query
+from app.services.permission_filter import (
+    check_question_permission,
+    check_sql_permission,
+    get_customer_context_instruction,
+)
 from app.constants.app_constants import (
     AgentName,
     EventName,
     AppConfig,
-    ValidationResult,
     WriteIntentKeyword,
 )
 from app.constants.messages import (
@@ -115,6 +119,30 @@ def process_chat(
             error="Write intent detected",
         )
 
+    # Pre-flight: check question-level permissions
+    is_allowed, deny_reason = check_question_permission(
+        request.question, user_context
+    )
+    if not is_allowed:
+        agent_logger.warning(
+            "Permission denied at question level",
+            event=EventName.SESSION_FAILED,
+            payload={
+                "question": request.question,
+                "role": user_context.role,
+                "reason": deny_reason,
+            },
+        )
+        return ChatResponse(
+            session_id=session_id,
+            question=request.question,
+            answer=deny_reason,
+            sql_generated=None,
+            rows_returned=0,
+            success=False,
+            error="Permission denied",
+        )
+
     trace = SessionTrace(
         session_id=session_id,
         user_question=request.question,
@@ -126,6 +154,7 @@ def process_chat(
         payload={
             "question": request.question,
             "user_role": user_context.role,
+            "customer_id": user_context.customer_id,
         },
     )
 
@@ -141,6 +170,9 @@ def process_chat(
             "history_turns": len(history),
         },
     )
+
+    # Get customer context instruction for query generator
+    customer_context = get_customer_context_instruction(user_context)
 
     final_sql = None
     last_rejection_reason = None
@@ -166,10 +198,13 @@ def process_chat(
         )
 
         # --- Cache check: skip generation and validation if seen before ---
+        # Note: cache is role-aware via schema_context key
         cached = get_cached_query(request.question, schema_context)
         approved_sql = None
 
-        if cached:
+        if cached and user_context.role != "customer":
+            # Do not serve cache for customer role
+            # — their queries must be regenerated with customer_id filter
             approved_sql = cached.sql
             warn = cached.warn
             warn_message = cached.warn_message
@@ -210,6 +245,7 @@ def process_chat(
                     session_id=session_id,
                     rejection_reason=last_rejection_reason,
                     conversation_history=conversation_history,
+                    customer_context=customer_context,
                 )
                 gen_span.end(success=True, output_summary=sql)
                 final_sql = sql
@@ -236,17 +272,38 @@ def process_chat(
                 )
 
                 if outcome.approved:
+                    # SQL-level permission check after validation
+                    sql_allowed, sql_deny_reason = check_sql_permission(
+                        sql, user_context
+                    )
+                    if not sql_allowed:
+                        last_rejection_reason = sql_deny_reason
+                        retry_count += 1
+                        _write_audit_record(
+                            session_id=session_id,
+                            question=request.question,
+                            sql=sql,
+                            was_approved=False,
+                            rejection_reason=sql_deny_reason,
+                            retry_count=retry_count,
+                            rows_returned=None,
+                            execution_time_ms=None,
+                        )
+                        continue
+
                     approved_sql = sql
                     warn = outcome.warn
                     warn_message = outcome.warn_message
-                    # Cache the approved query with TTL based on tables touched
-                    set_cached_query(
-                        request.question,
-                        schema_context,
-                        approved_sql,
-                        warn,
-                        warn_message,
-                    )
+
+                    # Cache only for guest and admin roles
+                    if user_context.role != "customer":
+                        set_cached_query(
+                            request.question,
+                            schema_context,
+                            approved_sql,
+                            warn,
+                            warn_message,
+                        )
                     break
 
                 # Rejected — prepare for retry

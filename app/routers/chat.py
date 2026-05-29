@@ -8,5 +8,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
-    user_context = UserContext()
+    user_context = UserContext(
+        role=request.role or "guest",
+        customer_id=request.customer_id,
+    )
     return process_chat(request=request, user_context=user_context)

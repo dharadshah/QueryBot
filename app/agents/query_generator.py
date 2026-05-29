@@ -32,6 +32,7 @@ def generate_query(
     session_id: str,
     rejection_reason: str = None,
     conversation_history: str = "",
+    customer_context: str = "",
 ) -> str:
     agent_logger = AgentLogger(
         agent_name=AgentName.QUERY_GENERATOR,
@@ -75,6 +76,10 @@ def generate_query(
                 user_question=question,
                 max_rows=AppConfig.MAX_ROWS,
             )
+
+        # Inject customer context if present
+        if customer_context:
+            user_prompt = customer_context + "\n\n" + user_prompt
 
         response = client.chat.completions.create(
             model=settings.active_chat_model,

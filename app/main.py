@@ -11,6 +11,8 @@ from app.constants.messages import (
     SESSION_FAILED,
 )
 from app.routers.chat import router as chat_router
+from app.routers.customers import router as customers_router
+app.include_router(customers_router)
 
 
 logger = logging.getLogger(__name__)

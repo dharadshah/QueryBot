@@ -115,3 +115,32 @@ class WriteIntentKeyword:
         "delete", "remove", "drop", "edit", "set", "put",
         "register", "save", "write", "post",
     ]
+
+class RolePermission:
+    # Tables each role is allowed to query
+    ALLOWED_TABLES = {
+        UserRole.GUEST: {
+            "products",
+            "categories",
+        },
+        UserRole.CUSTOMER: {
+            "products",
+            "categories",
+            "customers",
+            "orders",
+            "order_items",
+        },
+        UserRole.ADMIN: None,  # None means no restriction — all tables allowed
+    }
+
+    # Keywords in user questions that imply restricted tables
+    # Used for fast pre-generation blocking
+    ORDER_KEYWORDS = [
+        "order", "orders", "purchase", "purchases", "bought",
+        "delivery", "delivered", "shipped", "shipping", "transaction",
+    ]
+
+    CUSTOMER_KEYWORDS = [
+        "customer", "customers", "buyer", "buyers", "account",
+        "my account", "my orders", "my purchases",
+    ]
