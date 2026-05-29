@@ -16,8 +16,8 @@ def start_fastapi():
 
 
 def start_gradio():
-    # Wait for FastAPI to be ready before launching Gradio
-    time.sleep(3)
+    # Wait for FastAPI to be ready before Gradio loads customers
+    time.sleep(5)
     from ui.gradio_app import launch
     launch()
 
@@ -31,7 +31,6 @@ if __name__ == "__main__":
     fastapi_thread.start()
     gradio_thread.start()
 
-    # Keep main thread alive
     try:
         while True:
             time.sleep(1)

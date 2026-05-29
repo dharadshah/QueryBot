@@ -1,9 +1,11 @@
 import gradio as gr
 import requests
 import uuid
+import time
 
 FASTAPI_URL = "http://localhost:8000/chat"
 CUSTOMERS_URL = "http://localhost:8000/customers"
+
 
 CSS = """
 .gradio-container, .gradio-container * {
@@ -26,33 +28,38 @@ textarea, textarea * {
     font-size: 20px !important;
 }
 [data-testid="user"] * {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
     font-size: 20px !important;
 }
-[data-testid="user"] {
-    background-color: #1a1a2e !important;
-}
+
 button, label, .label-wrap {
     font-size: 20px !important;
 }
 """
 
 
-def load_customers() -> list[tuple[str, int]]:
-    try:
-        response = requests.get(CUSTOMERS_URL, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        return [(c["name"], c["customer_id"]) for c in data]
-    except Exception:
-        return []
 
 
-def on_role_change(role: str) -> gr.update:
-    if role == "customer":
-        return gr.update(visible=True)
-    return gr.update(visible=False)
+def _load_customers_at_startup(max_attempts: int = 10) -> list:
+    for attempt in range(max_attempts):
+        try:
+            response = requests.get(CUSTOMERS_URL, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            result = [(c["name"], c["customer_id"]) for c in data]
+            print(f"Customers loaded: {len(result)}")
+            return result
+        except Exception:
+            time.sleep(1)
+    print("Could not load customers after retries.")
+    return []
+
+
+# Load once at module level — runs when Gradio imports this file
+CUSTOMER_LIST = _load_customers_at_startup()
+CUSTOMER_CHOICES = [name for name, _ in CUSTOMER_LIST]
+CUSTOMER_MAP = {name: cid for name, cid in CUSTOMER_LIST}
 
 
 def chat(
@@ -60,8 +67,8 @@ def chat(
     history: list,
     session_id: str,
     role: str,
-    customer_choice: int,
-) -> tuple:
+    customer_name: str,
+):
     if not user_message.strip():
         yield "", history, session_id
         return
@@ -69,22 +76,22 @@ def chat(
     if not session_id:
         session_id = str(uuid.uuid4())
 
-    # Show user message immediately
     history = history + [
         {"role": "user", "content": user_message},
         {"role": "assistant", "content": "..."},
     ]
     yield "", history, session_id
 
-    # Build request payload
     payload = {
         "question": user_message,
         "session_id": session_id,
         "role": role.lower(),
     }
 
-    if role.lower() == "customer" and customer_choice:
-        payload["customer_id"] = customer_choice
+    if role.lower() == "customer" and customer_name:
+        customer_id = CUSTOMER_MAP.get(customer_name)
+        if customer_id:
+            payload["customer_id"] = customer_id
 
     try:
         response = requests.post(FASTAPI_URL, json=payload, timeout=120)
@@ -108,7 +115,7 @@ def chat(
         }
         yield "", history, session_id
 
-    except Exception as e:
+    except Exception:
         history[-1] = {
             "role": "assistant",
             "content": "An unexpected error occurred. Please try again.",
@@ -116,7 +123,7 @@ def chat(
         yield "", history, session_id
 
 
-def clear_chat() -> tuple:
+def clear_chat():
     return [], "", str(uuid.uuid4())
 
 
@@ -142,8 +149,9 @@ with gr.Blocks(css=CSS) as demo:
                 scale=1,
             )
             customer_selector = gr.Dropdown(
-                choices=[],
+                choices=CUSTOMER_CHOICES,
                 label="Select Customer",
+                value=CUSTOMER_CHOICES[0] if CUSTOMER_CHOICES else None,
                 visible=False,
                 scale=2,
             )
@@ -197,20 +205,9 @@ with gr.Blocks(css=CSS) as demo:
             label="Example Questions",
         )
 
-    # Load customers when role switches to Customer
+    # Show/hide customer selector based on role — pure UI, no I/O
     role_selector.change(
-        fn=on_role_change,
-        inputs=[role_selector],
-        outputs=[customer_selector],
-    )
-
-    # Load customers dynamically when dropdown becomes visible
-    role_selector.change(
-        fn=lambda role: gr.update(
-            choices=load_customers() if role.lower() == "customer" else [],
-            visible=role.lower() == "customer",
-            value=None,
-        ),
+        fn=lambda role: gr.update(visible=role.lower() == "customer"),
         inputs=[role_selector],
         outputs=[customer_selector],
     )

@@ -5,15 +5,13 @@ from app.config import settings
 from app.database import verify_connection, create_audit_tables
 from app.observability.logger import setup_logging
 from app.rag.embedder import embed_schema
+from app.routers.chat import router as chat_router
+from app.routers.customers import router as customers_router
 from app.constants.messages import (
     SESSION_STARTED,
     SESSION_COMPLETED,
     SESSION_FAILED,
 )
-from app.routers.chat import router as chat_router
-from app.routers.customers import router as customers_router
-app.include_router(customers_router)
-
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +20,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # --- Startup ---
 
-    # 1. Initialise structured logging first so every subsequent
-    #    step is captured in the correct format
+    # 1. Initialise structured logging first
     setup_logging(log_level=settings.log_level)
     logger.info(
         SESSION_STARTED.format(session_id="app_startup"),
@@ -75,8 +72,7 @@ async def lifespan(app: FastAPI):
     )
     create_audit_tables()
 
-    # 4. Embed schema into ChromaDB
-    # Idempotent — skips chunks already embedded
+    # 4. Embed schema into ChromaDB — idempotent
     logger.info(
         "Starting schema embedding into ChromaDB",
         extra={
@@ -123,6 +119,7 @@ app = FastAPI(
 )
 
 app.include_router(chat_router)
+app.include_router(customers_router)
 
 
 @app.get("/health", tags=["health"])
