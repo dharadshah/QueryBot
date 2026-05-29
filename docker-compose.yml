@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: querybot_sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_PASSWORD}"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd",
+             "-S", "localhost",
+             "-U", "sa",
+             "-P", "${MSSQL_PASSWORD}",
+             "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - querybot_network
+
+  querybot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: querybot_app
+    env_file:
+      - .env
+    environment:
+      # Override server to use Docker service name
+      MSSQL_SERVER: sqlserver
+      MSSQL_USE_WINDOWS_AUTH: "false"
+      RUNNING_IN_DOCKER: "true"
+    ports:
+      - "8000:8000"
+      - "7860:7860"
+    volumes:
+      - chroma_data:/app/chroma_store
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - querybot_network
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+  chroma_data:
+
+networks:
+  querybot_network:
+    driver: bridge
