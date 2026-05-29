@@ -13,11 +13,17 @@ from app.observability.logger import AgentLogger
 from app.observability.tracer import SessionTrace
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.user_context import UserContext
+from app.services.conversation_store import (
+    load_history,
+    save_turn,
+    format_history_for_prompt,
+)
 from app.constants.app_constants import (
     AgentName,
     EventName,
     AppConfig,
     ValidationResult,
+    WriteIntentKeyword,
 )
 from app.constants.messages import (
     SESSION_STARTED,
@@ -27,14 +33,19 @@ from app.constants.messages import (
     MAX_RETRIES_EXCEEDED,
     QUERY_FAILED_USER,
     MAX_RETRIES_USER,
-)
-from app.services.conversation_store import (
-    load_history,
-    save_turn,
-    format_history_for_prompt,
+    WRITE_INTENT_DETECTED,
+    VAGUE_QUESTION_USER,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _detect_write_intent(question: str) -> bool:
+    question_lower = question.lower().strip()
+    if not question_lower:
+        return False
+    first_word = question_lower.split()[0]
+    return first_word in WriteIntentKeyword.LIST
 
 
 def _write_audit_record(
@@ -78,10 +89,6 @@ def process_chat(
     # Generate or use provided session ID
     session_id = request.session_id or str(uuid.uuid4())
 
-    # Load conversation history for this session
-    history = load_history(session_id)
-    conversation_history = format_history_for_prompt(history)
-
     if user_context is None:
         user_context = UserContext()
 
@@ -89,6 +96,23 @@ def process_chat(
         agent_name=AgentName.ORCHESTRATOR,
         session_id=session_id,
     )
+
+    # Pre-flight: reject write intent immediately before any LLM call
+    if _detect_write_intent(request.question):
+        agent_logger.warning(
+            "Write intent detected in question",
+            event=EventName.SESSION_FAILED,
+            payload={"question": request.question},
+        )
+        return ChatResponse(
+            session_id=session_id,
+            question=request.question,
+            answer=WRITE_INTENT_DETECTED,
+            sql_generated=None,
+            rows_returned=0,
+            success=False,
+            error="Write intent detected",
+        )
 
     trace = SessionTrace(
         session_id=session_id,
@@ -104,12 +128,26 @@ def process_chat(
         },
     )
 
+    # Load conversation history for this session
+    history = load_history(session_id)
+    conversation_history = format_history_for_prompt(history)
+
+    agent_logger.info(
+        "Conversation history loaded",
+        event=EventName.SESSION_STARTED,
+        payload={
+            "session_id": session_id,
+            "history_turns": len(history),
+        },
+    )
+
     final_sql = None
     last_rejection_reason = None
     retry_count = 0
     rows = []
     warn = False
     warn_message = None
+    answer = None
 
     try:
         # --- Step 1: Schema Retrieval ---
@@ -121,7 +159,10 @@ def process_chat(
             question=request.question,
             session_id=session_id,
         )
-        schema_span.end(success=True, output_summary=f"{len(schema_context)} chars retrieved")
+        schema_span.end(
+            success=True,
+            output_summary=f"{len(schema_context)} chars retrieved",
+        )
 
         # --- Step 2: Generation + Validation loop ---
         approved_sql = None
@@ -146,7 +187,6 @@ def process_chat(
                 agent=AgentName.QUERY_GENERATOR,
                 input_summary=request.question,
             )
-            # Generate
             sql = generate_query(
                 question=request.question,
                 schema_context=schema_context,
@@ -172,7 +212,10 @@ def process_chat(
             val_span.end(
                 success=outcome.approved,
                 output_summary=outcome.verdict,
-                metadata={"rule_code": outcome.rule_code, "reason": outcome.reason},
+                metadata={
+                    "rule_code": outcome.rule_code,
+                    "reason": outcome.reason,
+                },
             )
 
             if outcome.approved:
@@ -203,23 +246,24 @@ def process_chat(
                 event=EventName.MAX_RETRIES_EXCEEDED,
                 payload={"retry_count": retry_count},
             )
-             # Save this exchange to conversation history
-            save_turn(
-                session_id=session_id,
-                user_question=request.question,
-                generated_sql=approved_sql,
-                answer=answer,
-            )
             trace.end_session(success=False, error=MAX_RETRIES_USER)
             agent_logger.info(
                 str(trace.to_dict()),
                 event=EventName.SESSION_FAILED,
                 payload=trace.to_dict(),
             )
+
+            # Use a context-aware message for vague questions
+            user_message = (
+                VAGUE_QUESTION_USER
+                if len(request.question.split()) <= 3
+                else MAX_RETRIES_USER
+            )
+
             return ChatResponse(
                 session_id=session_id,
                 question=request.question,
-                answer=MAX_RETRIES_USER,
+                answer=user_message,
                 sql_generated=final_sql,
                 rows_returned=0,
                 success=False,
@@ -274,6 +318,14 @@ def process_chat(
         )
         synth_span.end(success=True, output_summary="response generated")
 
+        # Save this exchange to conversation history
+        save_turn(
+            session_id=session_id,
+            user_question=request.question,
+            generated_sql=approved_sql,
+            answer=answer,
+        )
+
         # --- Session Complete ---
         trace.end_session(
             success=True,
@@ -321,5 +373,5 @@ def process_chat(
             sql_generated=final_sql,
             rows_returned=0,
             success=False,
-            error=str(e),
+            error="An internal error occurred.",
         )

@@ -69,11 +69,19 @@ def format_history_for_prompt(history: list[dict]) -> str:
     if not history:
         return ""
 
-    lines = ["Conversation so far:"]
+    lines = [f"Conversation history (last {len(history)} exchanges):"]
     for turn in history:
         lines.append(f"\n  [{turn['turn_number']}] User: {turn['user_question']}")
         if turn["generated_sql"]:
-            lines.append(f"      SQL: {turn['generated_sql']}")
-        lines.append(f"      Answer: {turn['answer']}")
+            # Truncate long SQL to keep prompt lean
+            sql_preview = turn["generated_sql"][:200]
+            if len(turn["generated_sql"]) > 200:
+                sql_preview += "..."
+            lines.append(f"      SQL: {sql_preview}")
+        # Truncate long answers too
+        answer_preview = turn["answer"][:150]
+        if len(turn["answer"]) > 150:
+            answer_preview += "..."
+        lines.append(f"      Answer: {answer_preview}")
 
     return "\n".join(lines)

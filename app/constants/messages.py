@@ -64,3 +64,8 @@ EXECUTION_PLAN_MISSING_INDEX = (
 EXECUTION_PLAN_CHECK_FAILED = (
     "Execution plan could not be retrieved: {error}"
 )
+
+VAGUE_QUESTION_USER = (
+    "Your question needs more context. "
+    "Could you please be more specific about what you are looking for?"
+)
