@@ -18,6 +18,7 @@ from app.services.conversation_store import (
     save_turn,
     format_history_for_prompt,
 )
+from app.services.query_cache import get_cached_query, set_cached_query
 from app.constants.app_constants import (
     AgentName,
     EventName,
@@ -164,80 +165,104 @@ def process_chat(
             output_summary=f"{len(schema_context)} chars retrieved",
         )
 
-        # --- Step 2: Generation + Validation loop ---
+        # --- Cache check: skip generation and validation if seen before ---
+        cached = get_cached_query(request.question, schema_context)
         approved_sql = None
 
-        while retry_count <= AppConfig.MAX_RETRIES:
-            if retry_count > 0:
-                agent_logger.info(
-                    RETRY_ATTEMPT.format(
-                        attempt=retry_count,
-                        max_retries=AppConfig.MAX_RETRIES,
-                    ),
-                    event=EventName.RETRY_ATTEMPT,
-                    payload={
-                        "attempt": retry_count,
-                        "rejection_reason": last_rejection_reason,
-                    },
-                )
-                trace.retry_count = retry_count
-
-            # Generate
-            gen_span = trace.start_span(
-                agent=AgentName.QUERY_GENERATOR,
-                input_summary=request.question,
-            )
-            sql = generate_query(
-                question=request.question,
-                schema_context=schema_context,
-                session_id=session_id,
-                rejection_reason=last_rejection_reason,
-                conversation_history=conversation_history,
-            )
-            gen_span.end(success=True, output_summary=sql)
-            final_sql = sql
-
-            # Validate
-            val_span = trace.start_span(
-                agent=AgentName.QUERY_VALIDATOR,
-                input_summary=sql,
-            )
-            outcome = validate_query(
-                sql=sql,
-                question=request.question,
-                schema_context=schema_context,
-                session_id=session_id,
-                conversation_history=conversation_history,
-            )
-            val_span.end(
-                success=outcome.approved,
-                output_summary=outcome.verdict,
-                metadata={
-                    "rule_code": outcome.rule_code,
-                    "reason": outcome.reason,
+        if cached:
+            approved_sql = cached.sql
+            warn = cached.warn
+            warn_message = cached.warn_message
+            final_sql = approved_sql
+            agent_logger.info(
+                "Query served from cache",
+                event=EventName.QUERY_GENERATION_COMPLETED,
+                payload={
+                    "sql": approved_sql,
+                    "cache_hit": True,
                 },
             )
+        else:
+            # --- Step 2: Generation + Validation loop ---
+            while retry_count <= AppConfig.MAX_RETRIES:
+                if retry_count > 0:
+                    agent_logger.info(
+                        RETRY_ATTEMPT.format(
+                            attempt=retry_count,
+                            max_retries=AppConfig.MAX_RETRIES,
+                        ),
+                        event=EventName.RETRY_ATTEMPT,
+                        payload={
+                            "attempt": retry_count,
+                            "rejection_reason": last_rejection_reason,
+                        },
+                    )
+                    trace.retry_count = retry_count
 
-            if outcome.approved:
-                approved_sql = sql
-                warn = outcome.warn
-                warn_message = outcome.warn_message
-                break
+                # Generate
+                gen_span = trace.start_span(
+                    agent=AgentName.QUERY_GENERATOR,
+                    input_summary=request.question,
+                )
+                sql = generate_query(
+                    question=request.question,
+                    schema_context=schema_context,
+                    session_id=session_id,
+                    rejection_reason=last_rejection_reason,
+                    conversation_history=conversation_history,
+                )
+                gen_span.end(success=True, output_summary=sql)
+                final_sql = sql
 
-            # Rejected — prepare for retry
-            last_rejection_reason = outcome.reason
-            retry_count += 1
+                # Validate
+                val_span = trace.start_span(
+                    agent=AgentName.QUERY_VALIDATOR,
+                    input_summary=sql,
+                )
+                outcome = validate_query(
+                    sql=sql,
+                    question=request.question,
+                    schema_context=schema_context,
+                    session_id=session_id,
+                    conversation_history=conversation_history,
+                )
+                val_span.end(
+                    success=outcome.approved,
+                    output_summary=outcome.verdict,
+                    metadata={
+                        "rule_code": outcome.rule_code,
+                        "reason": outcome.reason,
+                    },
+                )
 
-            _write_audit_record(
-                session_id=session_id,
-                question=request.question,
-                sql=sql,
-                was_approved=False,
-                rejection_reason=outcome.reason,
-                retry_count=retry_count,
-                rows_returned=None,
-                execution_time_ms=None,
-            )
+                if outcome.approved:
+                    approved_sql = sql
+                    warn = outcome.warn
+                    warn_message = outcome.warn_message
+                    # Cache the approved query with TTL based on tables touched
+                    set_cached_query(
+                        request.question,
+                        schema_context,
+                        approved_sql,
+                        warn,
+                        warn_message,
+                    )
+                    break
+
+                # Rejected — prepare for retry
+                last_rejection_reason = outcome.reason
+                retry_count += 1
+
+                _write_audit_record(
+                    session_id=session_id,
+                    question=request.question,
+                    sql=sql,
+                    was_approved=False,
+                    rejection_reason=outcome.reason,
+                    retry_count=retry_count,
+                    rows_returned=None,
+                    execution_time_ms=None,
+                )
 
         # --- Max retries exceeded ---
         if approved_sql is None:
@@ -253,7 +278,6 @@ def process_chat(
                 payload=trace.to_dict(),
             )
 
-            # Use a context-aware message for vague questions
             user_message = (
                 VAGUE_QUESTION_USER
                 if len(request.question.split()) <= 3
