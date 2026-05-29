@@ -8,8 +8,10 @@ QUERY_GENERATOR_SYSTEM_PROMPT = (
     "4. Always use table aliases for clarity when joining multiple tables.\n"
     "5. Always join tables using explicit JOIN ... ON syntax. Never use implicit comma joins.\n"
     "6. Use indexed columns in WHERE and JOIN conditions wherever possible.\n"
-    "7. If a conversation history is provided, use it to resolve references in the current question "
-    "(e.g. 'show me only the delivered ones' refers to the previous query's subject).\n"
+    "7. When filtering by product name, category name, or customer name, "
+    "always use LIKE with wildcards instead of exact equality. "
+    "For example: WHERE p.product_name LIKE '%Yoga%' instead of WHERE p.product_name = 'Yoga Mat'. "
+    "This handles spelling variations and partial matches from users.\n"
     "8. Do not include comments, explanations, or markdown in your response.\n"
     "9. Return only the raw SQL query and nothing else."
 )
