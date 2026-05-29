@@ -31,9 +31,6 @@ def chat(user_message: str, history: list, session_id: str) -> tuple[str, list, 
 
         display = answer
 
-        if not success and error:
-            display += f"\n\n*Error: {error}*"
-
         history.append({"role": "user", "content": user_message})
         history.append({"role": "assistant", "content": display})
         return "", history, session_id

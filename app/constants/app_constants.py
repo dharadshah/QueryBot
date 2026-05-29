@@ -108,3 +108,10 @@ class LogField:
     LEVEL = "level"
     PAYLOAD = "payload"
     LATENCY_MS = "latency_ms"
+
+class WriteIntentKeyword:
+    LIST = [
+        "add", "insert", "create", "update", "modify", "change",
+        "delete", "remove", "drop", "edit", "set", "put",
+        "register", "save", "write", "post",
+    ]

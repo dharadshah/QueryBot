@@ -69,3 +69,8 @@ VAGUE_QUESTION_USER = (
     "Your question needs more context. "
     "Could you please be more specific about what you are looking for?"
 )
+
+WRITE_INTENT_DETECTED = (
+    "I can only retrieve information from the database. "
+    "Actions like adding, updating, or deleting records are not permitted."
+)
