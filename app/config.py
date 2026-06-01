@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     enable_llm_guardrail: bool = True
 
 
+    demo_mode: bool = False
 
     # LLM Provider
     llm_provider: str = "groq"

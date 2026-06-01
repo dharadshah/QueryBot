@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from app.config import settings
 from app.utils.llm_client import get_llm_client
 from app.observability.logger import AgentLogger
+from app.observability import demo_logger
+
 from app.constants.app_constants import (
     AgentName,
     EventName,
@@ -239,9 +241,13 @@ def run_hard_rules(sql: str, agent_logger: AgentLogger) -> ValidationOutcome:
         _check_execution_plan,       # runs last — makes a DB call
     ]
 
+    demo_logger.hard_rules_header()
+
     for rule_fn in rules:
         outcome = rule_fn(sql)
+        demo_logger.hard_rule_check(rule_name, outcome.approved, outcome.reason or "")
         if not outcome.approved:
+            demo_logger.hard_rules_result(passed=False)
             agent_logger.warning(
                 HARD_RULE_FAILED.format(
                     rule_code=outcome.rule_code,
@@ -256,6 +262,7 @@ def run_hard_rules(sql: str, agent_logger: AgentLogger) -> ValidationOutcome:
             )
             return outcome
 
+    demo_logger.hard_rules_result(passed=True)
     agent_logger.info(
         HARD_RULE_PASSED,
         event=EventName.HARD_RULE_PASSED,

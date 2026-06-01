@@ -39,6 +39,17 @@ def setup_logging(log_level: str = "INFO") -> None:
 
     root_logger.addHandler(handler)
 
+    if settings.demo_mode:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("openai").setLevel(logging.WARNING)
+        logging.getLogger("groq").setLevel(logging.WARNING)
+        logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
+        logging.getLogger("chromadb").setLevel(logging.WARNING)
+        # Suppress all app JSON logs in demo mode
+        # Demo logger handles the output instead
+        logging.getLogger().setLevel(logging.CRITICAL)
+
 
 class AgentLogger:
     def __init__(self, agent_name: str, session_id: str):

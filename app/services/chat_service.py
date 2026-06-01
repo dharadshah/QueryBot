@@ -13,6 +13,8 @@ from app.observability.logger import AgentLogger
 from app.observability.tracer import SessionTrace
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.user_context import UserContext
+from app.observability import demo_logger
+
 from app.services.conversation_store import (
     load_history,
     save_turn,
@@ -104,6 +106,7 @@ def process_chat(
 
     # Pre-flight: reject write intent immediately before any LLM call
     if _detect_write_intent(request.question):
+        demo_logger.write_intent(request.question)
         agent_logger.warning(
             "Write intent detected in question",
             event=EventName.SESSION_FAILED,
@@ -124,6 +127,7 @@ def process_chat(
         request.question, user_context
     )
     if not is_allowed:
+        demo_logger.permission_denied(user_context.role, deny_reason)
         agent_logger.warning(
             "Permission denied at question level",
             event=EventName.SESSION_FAILED,
@@ -156,6 +160,13 @@ def process_chat(
             "user_role": user_context.role,
             "customer_id": user_context.customer_id,
         },
+    )
+
+    demo_logger.session_start(
+        session_id=session_id,
+        question=request.question,
+        role=user_context.role,
+        customer_id=user_context.customer_id,
     )
 
     # Load conversation history for this session
@@ -196,6 +207,10 @@ def process_chat(
             success=True,
             output_summary=f"{len(schema_context)} chars retrieved",
         )
+        demo_logger.schema_retrieval(
+            chunk_count=5,
+            latency_ms=schema_span.latency_ms or 0,
+        )
 
         # --- Cache check: skip generation and validation if seen before ---
         # Note: cache is role-aware via schema_context key
@@ -203,6 +218,11 @@ def process_chat(
         approved_sql = None
 
         if cached and user_context.role != "customer":
+            demo_logger.cache_hit(
+                request.question,
+                int(cached.ttl_seconds - (time.monotonic() - cached.cached_at))
+                if hasattr(cached, 'cached_at') else 0,
+            )
             # Do not serve cache for customer role
             # — their queries must be regenerated with customer_id filter
             approved_sql = cached.sql
@@ -248,6 +268,11 @@ def process_chat(
                     customer_context=customer_context,
                 )
                 gen_span.end(success=True, output_summary=sql)
+                demo_logger.query_generation(
+                    sql=sql,
+                    latency_ms=gen_span.latency_ms or 0,
+                    is_retry=retry_count > 0,
+                )
                 final_sql = sql
 
                 # Validate
@@ -272,6 +297,11 @@ def process_chat(
                 )
 
                 if outcome.approved:
+                    demo_logger.llm_guardrail(
+                        verdict=outcome.verdict,
+                        reason=outcome.reason or "Query approved",
+                        latency_ms=val_span.latency_ms or 0,
+                    )
                     # SQL-level permission check after validation
                     sql_allowed, sql_deny_reason = check_sql_permission(
                         sql, user_context
@@ -371,6 +401,11 @@ def process_chat(
             output_summary=f"{len(rows)} rows returned",
             metadata={"results_capped": results_capped},
         )
+        demo_logger.db_tool(
+            sql=approved_sql,
+            row_count=len(rows),
+            latency_ms=execution_time_ms,
+        )
 
         # Write approved audit record
         _write_audit_record(
@@ -398,7 +433,10 @@ def process_chat(
             results_capped=results_capped,
         )
         synth_span.end(success=True, output_summary="response generated")
-
+        demo_logger.response_synthesis(
+            answer=answer,
+            latency_ms=synth_span.latency_ms or 0,
+        )
         # Save this exchange to conversation history
         save_turn(
             session_id=session_id,
@@ -413,7 +451,12 @@ def process_chat(
             final_sql=approved_sql,
             rows_returned=len(rows),
         )
-
+        demo_logger.session_end(
+            total_ms=trace.total_latency_ms or 0,
+            retry_count=retry_count,
+            rows_returned=len(rows),
+            success=True,
+        )
         agent_logger.info(
             SESSION_COMPLETED.format(session_id=session_id),
             event=EventName.SESSION_COMPLETED,

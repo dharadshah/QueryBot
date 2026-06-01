@@ -1,6 +1,5 @@
 import threading
 import time
-import os
 import uvicorn
 from app.main import app
 from app.observability.logger import setup_logging
@@ -17,26 +16,23 @@ def start_fastapi():
 
 
 def start_gradio():
+    # Wait for FastAPI to be fully ready
     time.sleep(5)
+
+    # Load customers BEFORE launching Gradio
+    # so CUSTOMER_LIST is populated before the UI renders
+    from ui.gradio_app import _load_customers_at_startup
+    import ui.gradio_app as gradio_module
+    gradio_module.CUSTOMER_LIST = _load_customers_at_startup()
+    gradio_module.CUSTOMER_CHOICES = [name for name, _ in gradio_module.CUSTOMER_LIST]
+    gradio_module.CUSTOMER_MAP = {name: cid for name, cid in gradio_module.CUSTOMER_LIST}
+
     from ui.gradio_app import launch
     launch()
 
 
-def init_docker_db():
-    if os.environ.get("RUNNING_IN_DOCKER"):
-        print("Docker environment detected — initialising database...")
-        from docker.init_db import wait_for_db, create_database
-        conn = wait_for_db()
-        create_database(conn)
-        conn.close()
-        from seed.seed_data import run
-        run()
-
-
 if __name__ == "__main__":
     setup_logging(log_level=settings.log_level)
-
-    init_docker_db()
 
     fastapi_thread = threading.Thread(target=start_fastapi, daemon=True)
     gradio_thread = threading.Thread(target=start_gradio, daemon=True)

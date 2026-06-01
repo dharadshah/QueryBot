@@ -13,7 +13,7 @@ class Base(DeclarativeBase):
 # This engine is only for our system's own audit table
 engine = create_engine(
     settings.db_connection_string,
-    echo=settings.app_env == "development",
+    echo=settings.app_env == "development" and not settings.demo_mode,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,

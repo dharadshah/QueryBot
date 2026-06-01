@@ -50,16 +50,17 @@ def _load_customers_at_startup(max_attempts: int = 10) -> list:
             result = [(c["name"], c["customer_id"]) for c in data]
             print(f"Customers loaded: {len(result)}")
             return result
-        except Exception:
-            time.sleep(1)
-    print("Could not load customers after retries.")
+        except Exception as e:
+            if attempt < max_attempts - 1:
+                time.sleep(1)
+    print("Could not load customers.")
     return []
 
 
-# Load once at module level — runs when Gradio imports this file
-CUSTOMER_LIST = _load_customers_at_startup()
-CUSTOMER_CHOICES = [name for name, _ in CUSTOMER_LIST]
-CUSTOMER_MAP = {name: cid for name, cid in CUSTOMER_LIST}
+# At module level — will be overridden by run.py before launch
+CUSTOMER_LIST = []
+CUSTOMER_CHOICES = []
+CUSTOMER_MAP = {}
 
 
 def chat(
