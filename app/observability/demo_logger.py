@@ -196,3 +196,14 @@ def retry_attempt(attempt: int, max_retries: int, reason: str) -> None:
         f"\n  {YELLOW}{BOLD}RETRY {attempt}/{max_retries}{RESET}"
         f"  {DIM}Reason: {reason[:80]}{RESET}"
     )
+
+def execution_plan_result(
+    max_rows: int,
+    table_scans: list,
+    missing_indexes: list,
+) -> None:
+    if not _enabled():
+        return
+    scan_text = f"{RED}WARNING — {len(table_scans)} table scan(s){RESET}" if table_scans else f"{GREEN}No table scans{RESET}"
+    index_text = f"{YELLOW}{len(missing_indexes)} missing index suggestion(s){RESET}" if missing_indexes else f"{GREEN}No missing indexes{RESET}"
+    print(f"  {DIM}Plan     :{RESET} Est. rows: {max_rows}  |  Scans: {scan_text}  |  Indexes: {index_text}")

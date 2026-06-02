@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from app.config import settings
 from app.utils.llm_client import get_llm_client
 from app.observability.logger import AgentLogger
-from app.observability import demo_logger
+import app.observability.demo_logger as demo_logger
 
 from app.constants.app_constants import (
     AgentName,
@@ -176,6 +176,15 @@ def _check_cartesian_join(sql: str) -> ValidationOutcome:
 
 
 def _check_execution_plan(sql: str) -> ValidationOutcome:
+    
+    result = check_query_plan(sql)
+    if result["success"]:
+        import app.observability.demo_logger as demo_logger
+        demo_logger.execution_plan_result(
+            max_rows=result["max_estimated_rows"],
+            table_scans=result["table_scans"],
+            missing_indexes=result["missing_indexes"],
+        )
     from app.constants.messages import (
         EXECUTION_PLAN_TABLE_SCAN,
         EXECUTION_PLAN_MISSING_INDEX,
@@ -230,20 +239,20 @@ def _check_execution_plan(sql: str) -> ValidationOutcome:
 
 def run_hard_rules(sql: str, agent_logger: AgentLogger) -> ValidationOutcome:
     rules = [
-        _check_comment_injection,
-        _check_semicolon_stacking,
-        _check_syntax,
-        _check_select_only,
-        _check_disallowed_keywords,
-        _check_dangerous_system_calls,
-        _check_top_clause,
-        _check_cartesian_join,
-        _check_execution_plan,       # runs last — makes a DB call
+        (_check_comment_injection,      "Comment injection"),
+        (_check_semicolon_stacking,     "Semicolon stacking"),
+        (_check_syntax,                 "T-SQL syntax"),
+        (_check_select_only,            "SELECT only"),
+        (_check_disallowed_keywords,    "Disallowed keywords"),
+        (_check_dangerous_system_calls, "Dangerous system calls"),
+        (_check_top_clause,             "TOP clause present"),
+        (_check_cartesian_join,         "No cartesian joins"),
+        (_check_execution_plan,         "Execution plan (MSSQL)"),
     ]
 
     demo_logger.hard_rules_header()
 
-    for rule_fn in rules:
+    for rule_fn, rule_name in rules:
         outcome = rule_fn(sql)
         demo_logger.hard_rule_check(rule_name, outcome.approved, outcome.reason or "")
         if not outcome.approved:

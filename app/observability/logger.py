@@ -26,6 +26,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup_logging(log_level: str = "INFO") -> None:
+    from app.config import settings  # import here to avoid circular import
     level = getattr(logging, log_level.upper(), logging.INFO)
 
     handler = logging.StreamHandler(sys.stdout)

@@ -13,7 +13,7 @@ from app.observability.logger import AgentLogger
 from app.observability.tracer import SessionTrace
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.user_context import UserContext
-from app.observability import demo_logger
+import app.observability.demo_logger as demo_logger
 
 from app.services.conversation_store import (
     load_history,

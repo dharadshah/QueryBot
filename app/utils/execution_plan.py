@@ -29,34 +29,40 @@ def get_ecommerce_connection() -> pyodbc.Connection:
 
 
 def get_execution_plan_xml(sql: str) -> str | None:
-    """
-    Retrieves the estimated execution plan XML for a SQL query
-    without executing it. Returns the raw XML string or None on failure.
-    """
-    conn = None
     try:
-        conn = get_ecommerce_connection()
-        cursor = conn.cursor()
+        if settings.mssql_use_windows_auth:
+            conn_str = (
+                f"DRIVER={{{settings.mssql_driver}}};"
+                f"SERVER={settings.mssql_server};"
+                f"DATABASE={settings.mssql_database};"
+                f"Trusted_Connection=yes;"
+                f"TrustServerCertificate=yes;"
+            )
+        else:
+            conn_str = (
+                f"DRIVER={{{settings.mssql_driver}}};"
+                f"SERVER={settings.mssql_server};"
+                f"DATABASE={settings.mssql_database};"
+                f"UID={settings.mssql_username};"
+                f"PWD={settings.mssql_password};"
+                f"TrustServerCertificate=yes;"
+            )
 
-        cursor.execute("SET SHOWPLAN_XML ON")
-        cursor.execute(sql)
-
-        row = cursor.fetchone()
-        if row:
-            return row[0]
-        return None
+        with pyodbc.connect(conn_str) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SET SHOWPLAN_XML ON;")
+            cursor.execute(sql)
+            row = cursor.fetchone()
+            plan_xml = row[0] if row else None
+            cursor.execute("SET SHOWPLAN_XML OFF;")
+            return plan_xml
 
     except pyodbc.Error as e:
         logger.error("Failed to retrieve execution plan: %s", str(e))
         return None
-
-    finally:
-        if conn:
-            try:
-                cursor.execute("SET SHOWPLAN_XML OFF")
-            except Exception:
-                pass
-            conn.close()
+    except Exception as e:
+        logger.error("Unexpected error in execution plan: %s", str(e))
+        return None
 
 
 def analyse_execution_plan(xml_string: str) -> dict:
