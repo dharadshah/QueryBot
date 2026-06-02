@@ -241,6 +241,13 @@ def process_chat(
             # --- Step 2: Generation + Validation loop ---
             while retry_count <= AppConfig.MAX_RETRIES:
                 if retry_count > 0:
+                    import app.observability.demo_logger as demo_logger
+                    demo_logger.retry_attempt(
+                        attempt=retry_count,
+                        max_retries=AppConfig.MAX_RETRIES,
+                        reason=last_rejection_reason or "",
+                    )
+                    
                     agent_logger.info(
                         RETRY_ATTEMPT.format(
                             attempt=retry_count,

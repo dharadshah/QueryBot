@@ -32,6 +32,10 @@ from app.constants.messages import (
     EXECUTION_PLAN_CHECK_FAILED,
 )
 
+# Stores the most recent execution plan result so validate_query
+# can pass it to run_llm_plan_analyser without a second DB call
+_last_plan_result: dict = {}
+
 logger = logging.getLogger(__name__)
 
 
@@ -173,9 +177,11 @@ def _check_cartesian_join(sql: str) -> ValidationOutcome:
 
 
 def _check_execution_plan(sql: str) -> ValidationOutcome:
+    global _last_plan_result
     from app.utils.execution_plan import check_query_plan
 
     result = check_query_plan(sql)
+    _last_plan_result = result  # store for reuse in validate_query
 
     if result["success"]:
         try:
@@ -575,9 +581,8 @@ def validate_query(
 
     # Layer 1b — LLM Plan Analyser (optional)
     if settings.enable_llm_plan_analyser:
-        from app.utils.execution_plan import check_query_plan
-        plan_result = check_query_plan(sql)
-        if plan_result["success"]:
+        plan_result = _last_plan_result
+        if plan_result.get("success"):
             plan_outcome = run_llm_plan_analyser(
                 sql=sql,
                 plan_result=plan_result,
@@ -601,7 +606,7 @@ def validate_query(
                     event=EventName.PLAN_ANALYSIS_WARNED,
                     payload={"warn_message": plan_outcome.warn_message},
                 )
-                
+
     # Layer 2 — LLM guardrail, only if hard rules pass and guardrail is enabled
     if not settings.enable_llm_guardrail:
         agent_logger.info(

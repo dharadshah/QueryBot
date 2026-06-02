@@ -27,49 +27,9 @@ OPERATION_SCORES = {
     "RID Lookup":      {"score": 5,  "label": "WATCH"},
 }
 
-
-def get_ecommerce_connection() -> pyodbc.Connection:
-    if settings.mssql_use_windows_auth:
-        conn_str = (
-            f"DRIVER={{{settings.mssql_driver}}};"
-            f"SERVER={settings.mssql_server};"
-            f"DATABASE={settings.mssql_database};"
-            f"Trusted_Connection=yes;"
-            f"TrustServerCertificate=yes;"
-        )
-    else:
-        conn_str = (
-            f"DRIVER={{{settings.mssql_driver}}};"
-            f"SERVER={settings.mssql_server};"
-            f"DATABASE={settings.mssql_database};"
-            f"UID={settings.mssql_username};"
-            f"PWD={settings.mssql_password};"
-            f"TrustServerCertificate=yes;"
-        )
-    return pyodbc.connect(conn_str)
-
-
 def get_execution_plan_xml(sql: str) -> str | None:
     try:
-        if settings.mssql_use_windows_auth:
-            conn_str = (
-                f"DRIVER={{{settings.mssql_driver}}};"
-                f"SERVER={settings.mssql_server};"
-                f"DATABASE={settings.mssql_database};"
-                f"Trusted_Connection=yes;"
-                f"TrustServerCertificate=yes;"
-            )
-        else:
-            conn_str = (
-                f"DRIVER={{{settings.mssql_driver}}};"
-                f"SERVER={settings.mssql_server};"
-                f"DATABASE={settings.mssql_database};"
-                f"UID={settings.mssql_username};"
-                f"PWD={settings.mssql_password};"
-                f"TrustServerCertificate=yes;"
-            )
-
-        with pyodbc.connect(conn_str) as conn:
+        with get_mssql_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SET SHOWPLAN_XML ON;")
             cursor.execute(sql)

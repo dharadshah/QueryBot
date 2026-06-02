@@ -11,29 +11,9 @@ from app.constants.messages import (
     QUERY_EXECUTION_FAILED,
     TOP_CLAUSE_ENFORCED,
 )
+from app.utils.db_connection import get_mssql_connection
 
 logger = logging.getLogger(__name__)
-
-
-def get_ecommerce_connection() -> pyodbc.Connection:
-    if settings.mssql_use_windows_auth:
-        connection_string = (
-            f"DRIVER={{{settings.mssql_driver}}};"
-            f"SERVER={settings.mssql_server};"
-            f"DATABASE={settings.mssql_database};"
-            f"Trusted_Connection=yes;"
-            f"TrustServerCertificate=yes;"
-        )
-    else:
-        connection_string = (
-            f"DRIVER={{{settings.mssql_driver}}};"
-            f"SERVER={settings.mssql_server};"
-            f"DATABASE={settings.mssql_database};"
-            f"UID={settings.mssql_username};"
-            f"PWD={settings.mssql_password};"
-            f"TrustServerCertificate=yes;"
-        )
-    return pyodbc.connect(connection_string)
 
 
 def enforce_top_clause(sql: str, max_rows: int = AppConfig.MAX_ROWS) -> tuple[str, bool]:
@@ -96,7 +76,7 @@ def execute_query(sql: str, session_id: str) -> list[dict]:
     start_time = time.monotonic()
 
     try:
-        conn = get_ecommerce_connection()
+        conn = get_mssql_connection()
         cursor = conn.cursor()
         cursor.execute(enforced_sql)
 
