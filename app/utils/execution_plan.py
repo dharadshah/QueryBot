@@ -1,3 +1,97 @@
+"""
+execution_plan.py
+=================
+Pre-execution SQL Performance Analysis using MSSQL Estimated Execution Plans.
+
+Overview
+--------
+This module retrieves and analyses the estimated execution plan for a T-SQL
+query BEFORE it is executed against the database. This means zero rows are
+read and zero data is touched during the analysis — the database engine
+simply computes what it WOULD do if the query ran.
+
+How it works
+------------
+1. A fresh pyodbc connection is opened to the eCommerce database.
+   This must be a dedicated connection — SET SHOWPLAN_XML ON changes
+   the connection's behaviour so that every subsequent SQL statement
+   returns an XML plan instead of executing. Reusing a shared connection
+   would accidentally intercept live queries.
+
+2. SET SHOWPLAN_XML ON is sent to the connection.
+   This instructs MSSQL to return the estimated execution plan as XML
+   for the next query, rather than running it.
+
+3. The SQL query is sent on the same cursor.
+   MSSQL does NOT execute it — it returns one row containing the full
+   XML execution plan string.
+
+4. SET SHOWPLAN_XML OFF is sent to restore the connection to normal mode.
+
+5. The XML string is parsed using Python's built-in xml.etree.ElementTree.
+   The MSSQL showplan namespace is:
+   http://schemas.microsoft.com/sqlserver/2004/07/showplan
+
+XML Structure parsed
+--------------------
+The plan XML contains a tree of RelOp (Relational Operation) nodes.
+Each RelOp represents one physical operation the engine will perform.
+Key attributes extracted per RelOp:
+  - PhysicalOp     : the operation type (Index Seek, Table Scan, etc.)
+  - LogicalOp      : the logical intent (Inner Join, Aggregate, etc.)
+  - EstimateRows   : estimated number of rows this operation processes
+  - EstimatedTotalSubtreeCost : estimated cost of this operation subtree
+
+The StatementSubTreeCost attribute on StmtSimple gives the total
+estimated cost of the entire query.
+
+MissingIndexes nodes are emitted by MSSQL when its query optimiser
+knows a better index would improve performance. These are extracted
+and surfaced as warnings.
+
+Scoring logic (score_query_plan)
+---------------------------------
+Each physical operation is assigned a base efficiency score (0-10):
+  Index Seek / Clustered Index Seek  : 10  (best — direct index lookup)
+  Nested Loops                       : 8   (good for small row sets)
+  Index Scan / Hash Match / Merge    : 7   (acceptable)
+  Clustered Index Scan / Key Lookup  : 6   (watch on large tables)
+  Sort                               : 5   (expensive without index)
+  Table Scan                         : 2   (worst — reads entire table)
+
+Starting from a score of 100, deductions are applied:
+  Table Scan on table > 1000 est. rows : -30
+  Table Scan on small table            : -10
+  Sort on > 100 rows                   : -10
+  Key Lookup / RID Lookup              : -5 each
+  Missing index suggestion from MSSQL  : -15 each
+
+A bonus of +5 is applied if all operations are index-efficient
+(no scans, no sorts, no lookups).
+
+The final numeric score is clamped to 0-100 and mapped to a label:
+  90-100 : EXCELLENT
+  75-89  : GOOD
+  60-74  : ACCEPTABLE
+  40-59  : POOR
+  0-39   : CRITICAL
+
+Threshold for table scan rejection
+------------------------------------
+Table scans are only flagged as hard rule failures when estimated rows
+exceed ESTIMATED_ROWS_THRESHOLD (default 1000). On small demo tables
+with < 100 rows, a table scan is acceptable. On the client's production
+database with millions of rows, it would be caught and the query
+rejected with instructions to use indexed columns.
+
+Fail-open policy
+----------------
+If the execution plan cannot be retrieved (connection issue, driver
+version incompatibility, MSSQL timeout), the check fails open —
+the query is approved and the failure is logged. This prevents plan
+retrieval issues from blocking valid queries in production.
+"""
+
 import logging
 import xml.etree.ElementTree as ET
 import pyodbc
@@ -36,6 +130,9 @@ def get_execution_plan_xml(sql: str) -> str | None:
             cursor.execute(sql)
             row = cursor.fetchone()
             plan_xml = row[0] if row else None
+            print("\n\n")
+            print(plan_xml)
+            print("\n\n")
             cursor.execute("SET SHOWPLAN_XML OFF;")
             return plan_xml
 
