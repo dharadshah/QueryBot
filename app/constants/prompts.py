@@ -126,6 +126,7 @@ LLM_PLAN_ANALYSER_SYSTEM_PROMPT = (
     "{{\n"
     '  "verdict": "APPROVED", "WARN", or "REJECTED",\n'
     '  "reason": "brief explanation",\n'
+    '  "score": <integer 0-100 representing your efficiency assessment>,\n'
     '  "findings": ["finding 1", "finding 2"]\n'
     "}}"
 )

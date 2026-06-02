@@ -1,5 +1,7 @@
 import logging
 import uuid
+import time
+
 from datetime import datetime
 from app.config import settings
 from app.agents.schema_retriever import retrieve_schema_context

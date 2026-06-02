@@ -266,6 +266,7 @@ def llm_plan_analyser(
     reason: str,
     findings: list,
     latency_ms: int,
+    llm_score: int = None,
 ) -> None:
     if not _enabled():
         return
@@ -274,6 +275,9 @@ def llm_plan_analyser(
     colour = GREEN if verdict == "APPROVED" else (YELLOW if verdict == "WARN" else RED)
     _row("Verdict:", f"{colour}{BOLD}{verdict}{RESET}")
     _row("Reason :", reason)
+    if llm_score is not None:
+        score_colour = GREEN if llm_score >= 75 else (YELLOW if llm_score >= 50 else RED)
+        _row("LLM Score:", f"{score_colour}{BOLD}{llm_score}/100{RESET}")
     if findings:
         print(f"  {DIM}{'Findings':<10}{RESET}")
         for finding in findings:

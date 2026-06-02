@@ -340,12 +340,14 @@ def run_llm_plan_analyser(
         verdict = verdict_data.get("verdict", "APPROVED").upper()
         reason = verdict_data.get("reason", "No reason provided.")
         findings = verdict_data.get("findings", [])
+        llm_score = verdict_data.get("score", None)  # new
 
         demo_logger.llm_plan_analyser(
             verdict=verdict,
             reason=reason,
             findings=findings,
             latency_ms=latency_ms,
+            llm_score=llm_score,
         )
 
         if verdict == ValidationResult.APPROVED:
