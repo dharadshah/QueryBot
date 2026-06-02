@@ -157,21 +157,65 @@ def _check_top_clause(sql: str) -> ValidationOutcome:
     return ValidationOutcome(verdict=ValidationResult.APPROVED)
 
 
-def _check_cartesian_join(sql: str) -> ValidationOutcome:
-    # Detect comma-separated tables in FROM clause without JOIN keyword
-    from_pattern = re.compile(
-        r'\bFROM\b\s+\w+\s*,\s*\w+',
-        re.IGNORECASE,
-    )
-    if from_pattern.search(sql):
+def _check_execution_plan(sql: str) -> ValidationOutcome:
+    result = check_query_plan(sql)
+
+    if result["success"]:
+        import app.observability.demo_logger as demo_logger
+        demo_logger.execution_plan_result(
+            max_rows=result["max_estimated_rows"],
+            statement_cost=result["statement_cost"],
+            operations=result["operations"],
+            table_scans=result["table_scans"],
+            missing_indexes=result["missing_indexes"],
+            score=result.get("score", 0),
+            score_label=result.get("score_label", "UNKNOWN"),
+            score_deductions=result.get("score_deductions", []),
+        )
+
+    if not result["success"]:
+        logger.warning(
+            EXECUTION_PLAN_CHECK_FAILED.format(error=result["error"])
+        )
+        return ValidationOutcome(verdict=ValidationResult.APPROVED)
+
+    if result["table_scans"]:
+        scan = result["table_scans"][0]
         return ValidationOutcome(
             verdict=ValidationResult.REJECTED,
-            rule_code=HardRuleCode.CARTESIAN_JOIN,
-            reason=(
-                "Implicit comma join detected in FROM clause. "
-                "Use explicit JOIN ... ON syntax instead."
+            rule_code=HardRuleCode.EXECUTION_PLAN,
+            reason=EXECUTION_PLAN_TABLE_SCAN.format(
+                table=scan["table"],
+                rows=scan["estimated_rows"],
             ),
         )
+
+    if result["missing_indexes"]:
+        missing = result["missing_indexes"][0]
+        return ValidationOutcome(
+            verdict=ValidationResult.REJECTED,
+            rule_code=HardRuleCode.EXECUTION_PLAN,
+            reason=EXECUTION_PLAN_MISSING_INDEX.format(
+                table=missing["table"],
+                columns=", ".join(missing["columns"]),
+            ),
+        )
+
+    logger.info(
+        "Execution plan check passed",
+        extra={
+            "agent": AgentName.QUERY_VALIDATOR,
+            "event": EventName.HARD_RULE_PASSED,
+            "session_id": None,
+            "payload": {
+                "max_estimated_rows": result["max_estimated_rows"],
+                "score": result.get("score"),
+                "score_label": result.get("score_label"),
+                "table_scans": result["table_scans"],
+                "missing_indexes": result["missing_indexes"],
+            },
+        },
+    )
     return ValidationOutcome(verdict=ValidationResult.APPROVED)
 
 

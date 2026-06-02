@@ -1,5 +1,6 @@
 import time
 from app.config import settings
+from app.utils.execution_plan import OPERATION_SCORES
 
 # ANSI colours
 RESET   = "\033[0m"
@@ -199,11 +200,63 @@ def retry_attempt(attempt: int, max_retries: int, reason: str) -> None:
 
 def execution_plan_result(
     max_rows: int,
+    statement_cost: float,
+    operations: list,
     table_scans: list,
     missing_indexes: list,
+    score: int,
+    score_label: str,
+    score_deductions: list,
 ) -> None:
     if not _enabled():
         return
-    scan_text = f"{RED}WARNING — {len(table_scans)} table scan(s){RESET}" if table_scans else f"{GREEN}No table scans{RESET}"
-    index_text = f"{YELLOW}{len(missing_indexes)} missing index suggestion(s){RESET}" if missing_indexes else f"{GREEN}No missing indexes{RESET}"
-    print(f"  {DIM}Plan     :{RESET} Est. rows: {max_rows}  |  Scans: {scan_text}  |  Indexes: {index_text}")
+
+    # Score colour
+    if score >= 90:
+        score_colour = GREEN
+    elif score >= 75:
+        score_colour = YELLOW
+    elif score >= 60:
+        score_colour = YELLOW
+    else:
+        score_colour = RED
+
+    print(f"\n  {DIM}{'─' * 55}{RESET}")
+    print(f"  {BOLD}Execution Plan Analysis{RESET}")
+    print(f"  {DIM}{'─' * 55}{RESET}")
+    print(f"  {DIM}{'Statement cost':<22}{RESET} {statement_cost}")
+    print(f"  {DIM}{'Max estimated rows':<22}{RESET} {max_rows:,}")
+
+    if operations:
+        print(f"  {DIM}{'Operations':<22}{RESET}")
+        for op in operations:
+            op_name = op["physical_op"]
+            table = f" on {op['table']}" if op["table"] else ""
+            rows = f"est. {op['estimated_rows']:,} rows"
+            op_info = OPERATION_SCORES.get(op_name, {"score": 5, "label": "UNKNOWN"})
+            op_colour = GREEN if op_info["score"] >= 8 else (
+                YELLOW if op_info["score"] >= 5 else RED
+            )
+            print(
+                f"    {op_colour}{op_name:<30}{RESET}"
+                f"{table:<20} {DIM}{rows}{RESET}"
+            )
+
+    scan_text = f"{RED}WARNING — {len(table_scans)} table scan(s){RESET}" \
+        if table_scans else f"{GREEN}None{RESET}"
+    idx_text = f"{YELLOW}{len(missing_indexes)} suggestion(s){RESET}" \
+        if missing_indexes else f"{GREEN}None{RESET}"
+
+    print(f"  {DIM}{'Table scans':<22}{RESET} {scan_text}")
+    print(f"  {DIM}{'Missing indexes':<22}{RESET} {idx_text}")
+
+    if score_deductions:
+        print(f"  {DIM}{'Deductions':<22}{RESET}")
+        for d in score_deductions:
+            print(f"    {RED}{d}{RESET}")
+
+    print(
+        f"  {DIM}{'Query score':<22}{RESET} "
+        f"{score_colour}{BOLD}{score}/100  —  {score_label}{RESET}"
+    )
+    print(f"  {DIM}{'─' * 55}{RESET}\n")
