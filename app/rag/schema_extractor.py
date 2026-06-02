@@ -502,11 +502,19 @@ def run_extraction() -> dict:
     # Strip timestamps from comparison to avoid false positives
     def _strip_timestamp(text: str) -> str:
         import re
-        return re.sub(
+        # Strip the comment timestamp
+        text = re.sub(
             r"<!-- Last extracted: .*? -->",
             "<!-- Last extracted: TIMESTAMP -->",
             text,
         )
+        # Strip the body timestamp
+        text = re.sub(
+            r"## Extracted at: .*",
+            "## Extracted at: TIMESTAMP",
+            text,
+        )
+        return text
 
     existing_auto_clean = _strip_timestamp(existing_auto)
     new_auto_clean = _strip_timestamp(new_auto_section)

@@ -1,12 +1,12 @@
 <!-- AUTO-GENERATED SECTION — DO NOT EDIT MANUALLY -->
-<!-- Last extracted: 2026-06-02T13:46:47.177062 -->
+<!-- Last extracted: 2026-06-02T13:45:39.421303 -->
 <!-- Changes to this section will be overwritten on next startup -->
 
 # eCommerce Database Schema
 
 ## Database: QueryBotDB
 ## Dialect: Microsoft SQL Server (T-SQL)
-## Extracted at: 2026-06-02T13:46:47.177062
+## Extracted at: 2026-06-02T13:45:39.421303
 
 ---
 

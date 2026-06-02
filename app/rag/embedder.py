@@ -97,3 +97,48 @@ def retrieve_schema_chunks(question: str) -> list[str]:
     except Exception as e:
         logger.error(SCHEMA_RETRIEVAL_FAILED.format(error=str(e)))
         raise
+
+def force_reembed():
+    """
+    Clears the existing ChromaDB collection and re-embeds
+    from the current approved ecommerce_schema.md.
+    Called manually after human approves a schema change.
+    """
+    import chromadb
+    from app.config import settings
+
+    logger.info("Force re-embed requested — clearing existing collection")
+
+    client = chromadb.PersistentClient(path=settings.chroma_persist_path)
+
+    # Delete existing collection if it exists
+    try:
+        client.delete_collection(settings.chroma_collection_name)
+        logger.info(
+            "Deleted existing collection: %s",
+            settings.chroma_collection_name,
+        )
+        print(f"Deleted existing collection: {settings.chroma_collection_name}")
+    except Exception:
+        print("No existing collection found — creating fresh.")
+
+    # Re-embed from current schema file
+    print("Re-embedding schema from ecommerce_schema.md ...")
+    embed_schema()
+    print("Re-embedding complete.")
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))
+    )))
+    from app.observability.logger import setup_logging
+    setup_logging("INFO")
+
+    if "--force-reembed" in sys.argv:
+        force_reembed()
+    else:
+        print("Running standard embed (skips existing chunks)...")
+        embed_schema()
+        print("Done.")
