@@ -97,6 +97,8 @@ import xml.etree.ElementTree as ET
 import pyodbc
 from app.config import settings
 from app.utils.db_connection import get_mssql_connection
+from app.rag.schema_validator import validate_plan_against_schema
+
 
 logger = logging.getLogger(__name__)
 
@@ -330,16 +332,35 @@ def check_query_plan(sql: str) -> dict:
             "max_estimated_rows": 0,
             "statement_cost": 0.0,
             "score": None,
+            "schema_validation": None,
             "error": "Could not retrieve execution plan.",
         }
 
     analysis = analyse_execution_plan(xml_string)
     scoring = score_query_plan(analysis)
 
+    # Extract all table names from operations for Check A
+    table_names = list({
+        op["table"]
+        for op in analysis["operations"]
+        if op.get("table")
+    })
+
+    # Run schema validation — Check A and Check B
+    try:
+        schema_validation = validate_plan_against_schema(
+            operations=analysis["operations"],
+            table_names=table_names,
+        )
+    except Exception as e:
+        logger.warning("Schema validation failed: %s", str(e))
+        schema_validation = None
+
     analysis["success"] = True
     analysis["error"] = None
     analysis["score"] = scoring["score"]
     analysis["score_label"] = scoring["label"]
     analysis["score_deductions"] = scoring["deductions"]
+    analysis["schema_validation"] = schema_validation
 
     return analysis

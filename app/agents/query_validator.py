@@ -198,9 +198,10 @@ def _check_execution_plan(sql: str) -> ValidationOutcome:
                 score=result.get("score", 0),
                 score_label=result.get("score_label", "UNKNOWN"),
                 score_deductions=result.get("score_deductions", []),
+                schema_validation=result.get("schema_validation"),
             )
         except Exception as e:
-            print(f"DEMO LOGGER ERROR: {e}")  # temporary — remove after fix
+            print(f"DEMO LOGGER ERROR: {e}")
 
     if not result["success"]:
         logger.warning(

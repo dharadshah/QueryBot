@@ -207,11 +207,11 @@ def execution_plan_result(
     score: int,
     score_label: str,
     score_deductions: list,
+    schema_validation: dict = None,
 ) -> None:
     if not _enabled():
         return
 
-    # Score colour
     if score >= 90:
         score_colour = GREEN
     elif score >= 75:
@@ -242,10 +242,14 @@ def execution_plan_result(
                 f"{table:<20} {DIM}{rows}{RESET}"
             )
 
-    scan_text = f"{RED}WARNING — {len(table_scans)} table scan(s){RESET}" \
+    scan_text = (
+        f"{RED}WARNING — {len(table_scans)} table scan(s){RESET}"
         if table_scans else f"{GREEN}None{RESET}"
-    idx_text = f"{YELLOW}{len(missing_indexes)} suggestion(s){RESET}" \
+    )
+    idx_text = (
+        f"{YELLOW}{len(missing_indexes)} suggestion(s){RESET}"
         if missing_indexes else f"{GREEN}None{RESET}"
+    )
 
     print(f"  {DIM}{'Table scans':<22}{RESET} {scan_text}")
     print(f"  {DIM}{'Missing indexes':<22}{RESET} {idx_text}")
@@ -259,6 +263,53 @@ def execution_plan_result(
         f"  {DIM}{'Query score':<22}{RESET} "
         f"{score_colour}{BOLD}{score}/100  —  {score_label}{RESET}"
     )
+
+    # Schema validation output
+    if schema_validation:
+        print(f"\n  {BOLD}Schema Validation{RESET}")
+
+        # Check A — Table existence
+        if schema_validation.get("unknown_tables"):
+            for t in schema_validation["unknown_tables"]:
+                print(
+                    f"  {DIM}{'Unknown table':<22}{RESET} "
+                    f"{RED}ALERT: '{t}' not found in schema — "
+                    f"possible hallucination{RESET}"
+                )
+        else:
+            print(
+                f"  {DIM}{'Tables':<22}{RESET} "
+                f"{GREEN}All {len(schema_validation['known_tables'])} "
+                f"table(s) confirmed in schema{RESET}"
+            )
+
+        # Check B — Index confirmations
+        if schema_validation.get("index_confirmations"):
+            for conf in schema_validation["index_confirmations"]:
+                print(
+                    f"  {DIM}{'Index':<22}{RESET} "
+                    f"{GREEN}CONFIRMED: {conf['operation']} "
+                    f"on '{conf['table']}'{RESET}"
+                )
+
+        # Check B — Unexpected scans
+        if schema_validation.get("unexpected_scans"):
+            for scan in schema_validation["unexpected_scans"]:
+                avail = ", ".join(scan["available_indexes"])
+                print(
+                    f"  {DIM}{'Unexpected scan':<22}{RESET} "
+                    f"{YELLOW}WARNING: Table scan on '{scan['table']}' "
+                    f"— available indexes: {avail}{RESET}"
+                )
+
+        # Schema drift
+        if schema_validation.get("schema_drift"):
+            for drift in schema_validation["schema_drift"]:
+                print(
+                    f"  {DIM}{'Schema drift':<22}{RESET} "
+                    f"{RED}{drift['message']}{RESET}"
+                )
+
     print(f"  {DIM}{'─' * 55}{RESET}\n")
 
 def llm_plan_analyser(
