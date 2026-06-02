@@ -2,202 +2,153 @@
 
 ## Database: QueryBotDB
 ## Dialect: Microsoft SQL Server (T-SQL)
-
----
-
-## Table: users
-
-Description: Stores all user accounts for the system. Every person who interacts with the system has a user record. A user can have one of three roles: guest, customer, or admin.
-
-Columns:
-- user_id (INT, PRIMARY KEY, AUTOINCREMENT): Unique identifier for the user.
-- username (VARCHAR 100, NOT NULL, UNIQUE): Login username.
-- email (VARCHAR 255, NOT NULL, UNIQUE): User email address.
-- password_hash (VARCHAR 255, NOT NULL): Hashed password, never returned in queries.
-- role (VARCHAR 20, NOT NULL, DEFAULT guest): Access role. Values: guest, customer, admin.
-- is_active (BIT, NOT NULL, DEFAULT 1): Whether the user account is active.
-- created_at (DATETIME, NOT NULL): Timestamp when the user was created.
-
-Indexes:
-- ix_users_email on (email)
-- ix_users_role on (role)
-
-Relationships:
-- One user can have zero or one customer record (one-to-one with customers table).
+## Extracted at: 2026-06-02T11:01:22.499910
 
 ---
 
 ## Table: categories
 
-Description: Master table for product categories. Every product belongs to one category.
-
 Columns:
-- category_id (INT, PRIMARY KEY, AUTOINCREMENT): Unique identifier for the category.
-- category_name (VARCHAR 100, NOT NULL, UNIQUE): Name of the category. Examples: Electronics, Clothing, Books, Home Appliances, Sports.
-- description (TEXT, NULLABLE): Optional description of the category.
-- is_active (BIT, NOT NULL, DEFAULT 1): Whether the category is active.
+- category_id (INT, PRIMARY KEY, AUTOINCREMENT, NOT NULL)
+- category_name (VARCHAR(100), NOT NULL)
+- description (TEXT, NULLABLE)
+- is_active (BIT, NOT NULL, DEFAULT 1)
+
+Primary Key: category_id
 
 Indexes:
-- ix_categories_name on (category_name)
-
-Relationships:
-- One category can have many products (one-to-many with products table).
+- PK__categori__D54EE9B41C0663C2 on (category_id) (UNIQUE, PRIMARY KEY)
+- UQ__categori__5189E255EE6FFEBD on (category_name) (UNIQUE)
 
 ---
 
-## Table: products
-
-Description: Master table for all products available in the eCommerce store. Each product belongs to one category.
+## Table: conversation_history
 
 Columns:
-- product_id (INT, PRIMARY KEY, AUTOINCREMENT): Unique identifier for the product.
-- category_id (INT, NOT NULL, FOREIGN KEY -> categories.category_id): The category this product belongs to.
-- product_name (VARCHAR 255, NOT NULL): Name of the product.
-- description (TEXT, NULLABLE): Optional product description.
-- unit_price (DECIMAL 10,2, NOT NULL): Price per unit in USD.
-- stock_quantity (INT, NOT NULL, DEFAULT 0): Current stock available.
-- sku (VARCHAR 100, NOT NULL, UNIQUE): Stock Keeping Unit code, unique per product.
-- is_active (BIT, NOT NULL, DEFAULT 1): Whether the product is available for sale.
-- created_at (DATETIME, NOT NULL): Timestamp when the product was added.
+- id (INT, PRIMARY KEY, AUTOINCREMENT, NOT NULL)
+- session_id (VARCHAR(100), NOT NULL)
+- turn_number (INT, NOT NULL)
+- user_question (VARCHAR, NOT NULL)
+- generated_sql (VARCHAR, NULLABLE)
+- answer (VARCHAR, NOT NULL)
+- created_at (DATETIME, NOT NULL)
+
+Primary Key: id
 
 Indexes:
-- ix_products_category_id on (category_id)
-- ix_products_sku on (sku)
-- ix_products_name on (product_name)
+- ix_conversation_session_id on (session_id)
+- ix_conversation_turn on (session_id, turn_number)
+- PK__conversa__3213E83F859CD3E0 on (id) (UNIQUE, PRIMARY KEY)
 
-Relationships:
-- Each product belongs to one category (many-to-one with categories table).
-- One product can appear in many order items (one-to-many with order_items table).
-
-Note: products table does NOT have shipping or location columns.
-Shipping destination is stored in the orders table (shipping_city, shipping_country).
 ---
 
 ## Table: customers
 
-Description: Stores customer profile information. Every customer must have a linked user account. Customer address information is stored directly in this table.
-
 Columns:
-- customer_id (INT, PRIMARY KEY, AUTOINCREMENT): Unique identifier for the customer.
-- user_id (INT, NOT NULL, UNIQUE, FOREIGN KEY -> users.user_id): The linked user account.
-- first_name (VARCHAR 100, NOT NULL): Customer first name.
-- last_name (VARCHAR 100, NOT NULL): Customer last name.
-- email (VARCHAR 255, NOT NULL, UNIQUE): Customer email address.
-- phone (VARCHAR 20, NULLABLE): Customer phone number.
-- city (VARCHAR 100, NULLABLE): Customer city.
-- state (VARCHAR 100, NULLABLE): Customer state or province.
-- country (VARCHAR 100, NULLABLE): Customer country.
-- postal_code (VARCHAR 20, NULLABLE): Customer postal or zip code.
-- created_at (DATETIME, NOT NULL): Timestamp when the customer record was created.
+- customer_id (INT, PRIMARY KEY, AUTOINCREMENT, NOT NULL)
+- first_name (VARCHAR(100), NOT NULL)
+- last_name (VARCHAR(100), NOT NULL)
+- email (VARCHAR(255), NOT NULL)
+- phone (VARCHAR(20), NULLABLE)
+- city (VARCHAR(100), NULLABLE)
+- state (VARCHAR(100), NULLABLE)
+- country (VARCHAR(100), NULLABLE)
+- postal_code (VARCHAR(20), NULLABLE)
+- created_at (DATETIME, NOT NULL, DEFAULT getdate)
+
+Primary Key: customer_id
 
 Indexes:
-- ix_customers_user_id on (user_id)
-- ix_customers_email on (email)
-- ix_customers_city_country on (city, country)
+- PK__customer__CD65CB855BB7097A on (customer_id) (UNIQUE, PRIMARY KEY)
+- UQ__customer__AB6E6164EE5B7ED8 on (email) (UNIQUE)
 
-Relationships:
-- Each customer is linked to exactly one user account (one-to-one with users table).
-- One customer can have many orders (one-to-many with orders table).
+---
+
+## Table: order_items
+
+Columns:
+- order_item_id (INT, PRIMARY KEY, AUTOINCREMENT, NOT NULL)
+- order_id (INT, NOT NULL)
+- product_id (INT, NOT NULL)
+- quantity (INT, NOT NULL)
+- unit_price (DECIMAL(10,2), NOT NULL)
+- line_total (DECIMAL(12,2), NOT NULL)
+
+Primary Key: order_item_id
+
+Indexes:
+- PK__order_it__3764B6BC98840DF4 on (order_item_id) (UNIQUE, PRIMARY KEY)
+
+Foreign Keys:
+- FK__order_ite__order__03F0984C: order_id -> orders.order_id
+- FK__order_ite__produ__04E4BC85: product_id -> products.product_id
 
 ---
 
 ## Table: orders
 
-Description: Stores all customer orders. Each order belongs to one customer and contains one or more order items. The total_amount reflects the sum of all line totals in order_items.
-
 Columns:
-- order_id (INT, PRIMARY KEY, AUTOINCREMENT): Unique identifier for the order.
-- customer_id (INT, NOT NULL, FOREIGN KEY -> customers.customer_id): The customer who placed the order.
-- order_date (DATETIME, NOT NULL): Timestamp when the order was placed.
-- status (VARCHAR 50, NOT NULL, DEFAULT pending): Current order status. Values: pending, confirmed, shipped, delivered, cancelled.
-- total_amount (DECIMAL 12,2, NOT NULL, DEFAULT 0): Total value of the order in USD.
-- shipping_city (VARCHAR 100, NULLABLE): City where the order is shipped to.
-- shipping_country (VARCHAR 100, NULLABLE): Country where the order is shipped to.
-- notes (TEXT, NULLABLE): Optional notes on the order.
+- order_id (INT, PRIMARY KEY, AUTOINCREMENT, NOT NULL)
+- customer_id (INT, NOT NULL)
+- order_date (DATETIME, NOT NULL, DEFAULT getdate)
+- status (VARCHAR(50), NOT NULL, DEFAULT 'pending')
+- total_amount (DECIMAL(12,2), NOT NULL, DEFAULT 0)
+- shipping_city (VARCHAR(100), NULLABLE)
+- shipping_country (VARCHAR(100), NULLABLE)
+- notes (TEXT, NULLABLE)
+
+Primary Key: order_id
 
 Indexes:
-- ix_orders_customer_id on (customer_id)
-- ix_orders_order_date on (order_date)
-- ix_orders_status on (status)
+- PK__orders__46596229FE1C60B4 on (order_id) (UNIQUE, PRIMARY KEY)
 
-Relationships:
-- Each order belongs to one customer (many-to-one with customers table).
-- One order can have many order items (one-to-many with order_items table).
+Foreign Keys:
+- FK__orders__customer__7E37BEF6: customer_id -> customers.customer_id
 
-Note: shipping_city and shipping_country refer to where the order was shipped TO,
-not the customer's address. Use these columns for delivery location queries.
 ---
 
-## Table: order_items
-
-Description: Child table of orders. Each row represents one product line within an order. The line_total is quantity multiplied by unit_price at the time of the order.
+## Table: products
 
 Columns:
-- order_item_id (INT, PRIMARY KEY, AUTOINCREMENT): Unique identifier for the order item.
-- order_id (INT, NOT NULL, FOREIGN KEY -> orders.order_id): The parent order.
-- product_id (INT, NOT NULL, FOREIGN KEY -> products.product_id): The product ordered.
-- quantity (INT, NOT NULL): Number of units ordered.
-- unit_price (DECIMAL 10,2, NOT NULL): Price per unit at the time of the order.
-- line_total (DECIMAL 12,2, NOT NULL): Total for this line (quantity x unit_price).
+- product_id (INT, PRIMARY KEY, AUTOINCREMENT, NOT NULL)
+- category_id (INT, NOT NULL)
+- product_name (VARCHAR(255), NOT NULL)
+- description (TEXT, NULLABLE)
+- unit_price (DECIMAL(10,2), NOT NULL)
+- stock_quantity (INT, NOT NULL, DEFAULT 0)
+- sku (VARCHAR(100), NOT NULL)
+- is_active (BIT, NOT NULL, DEFAULT 1)
+- created_at (DATETIME, NOT NULL, DEFAULT getdate)
+
+Primary Key: product_id
 
 Indexes:
-- ix_order_items_order_id on (order_id)
-- ix_order_items_product_id on (product_id)
+- PK__products__47027DF50F0231E1 on (product_id) (UNIQUE, PRIMARY KEY)
+- UQ__products__DDDF4BE71C6A07AA on (sku) (UNIQUE)
 
-Relationships:
-- Each order item belongs to one order (many-to-one with orders table).
-- Each order item references one product (many-to-one with products table).
+Foreign Keys:
+- FK__products__catego__74AE54BC: category_id -> categories.category_id
 
 ---
 
 ## Table: query_audit
 
-Description: Internal audit log table. Every SQL query generated by the system is recorded here regardless of whether it was approved or rejected. Used for governance, debugging, and monitoring.
-
 Columns:
-- audit_id (INT, PRIMARY KEY, AUTOINCREMENT): Unique identifier for the audit record.
-- session_id (VARCHAR 100, NOT NULL): The session that generated the query.
-- user_question (TEXT, NOT NULL): The original question asked by the user.
-- generated_sql (TEXT, NOT NULL): The SQL query that was generated.
-- was_approved (BIT, NOT NULL): Whether the query passed validation.
-- rejection_reason (TEXT, NULLABLE): Reason for rejection if was_approved is false.
-- retry_count (INT, NOT NULL, DEFAULT 0): Number of retries before this query was generated.
-- rows_returned (INT, NULLABLE): Number of rows returned if the query was executed.
-- execution_time_ms (INT, NULLABLE): Query execution time in milliseconds.
-- created_at (DATETIME, NOT NULL): Timestamp when this audit record was created.
+- audit_id (INT, PRIMARY KEY, AUTOINCREMENT, NOT NULL)
+- session_id (VARCHAR(100), NOT NULL)
+- user_question (VARCHAR, NOT NULL)
+- generated_sql (VARCHAR, NOT NULL)
+- was_approved (BIT, NOT NULL)
+- rejection_reason (VARCHAR, NULLABLE)
+- retry_count (INT, NOT NULL)
+- rows_returned (INT, NULLABLE)
+- execution_time_ms (INT, NULLABLE)
+- plan_analysis (VARCHAR, NULLABLE)
+- created_at (DATETIME, NOT NULL)
+
+Primary Key: audit_id
 
 Indexes:
-- ix_query_audit_session_id on (session_id)
 - ix_query_audit_created_at on (created_at)
-
----
-
-## Common Join Patterns
-
-The following join patterns are commonly used in this schema:
-
-### Products with their category:
-SELECT TOP 20 p.product_name, p.unit_price, c.category_name
-FROM products p
-JOIN categories c ON p.category_id = c.category_id
-
-### Orders with customer details:
-SELECT TOP 20 o.order_id, o.order_date, o.total_amount, o.status,
-       cu.first_name, cu.last_name, cu.email
-FROM orders o
-JOIN customers cu ON o.customer_id = cu.customer_id
-
-### Order items with product and order details:
-SELECT TOP 20 o.order_id, o.order_date, p.product_name,
-       oi.quantity, oi.unit_price, oi.line_total
-FROM order_items oi
-JOIN orders o ON oi.order_id = o.order_id
-JOIN products p ON oi.product_id = p.product_id
-
-### Full order summary per customer:
-SELECT TOP 20 cu.first_name, cu.last_name,
-       COUNT(o.order_id) AS total_orders,
-       SUM(o.total_amount) AS total_spent
-FROM customers cu
-JOIN orders o ON cu.customer_id = o.customer_id
-GROUP BY cu.first_name, cu.last_name
+- ix_query_audit_session_id on (session_id)
+- PK__query_au__5AF33E33BD756310 on (audit_id) (UNIQUE, PRIMARY KEY)
