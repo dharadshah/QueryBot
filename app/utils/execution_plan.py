@@ -132,9 +132,7 @@ def get_execution_plan_xml(sql: str) -> str | None:
             cursor.execute(sql)
             row = cursor.fetchone()
             plan_xml = row[0] if row else None
-            print("\n\n")
-            print(plan_xml)
-            print("\n\n")
+            
             cursor.execute("SET SHOWPLAN_XML OFF;")
             return plan_xml
 
