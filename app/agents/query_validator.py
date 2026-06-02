@@ -31,6 +31,8 @@ from app.constants.messages import (
     EXECUTION_PLAN_MISSING_INDEX,
     EXECUTION_PLAN_CHECK_FAILED,
 )
+import app.observability.demo_logger as demo_logger
+from app.utils.execution_plan import check_query_plan
 
 # Stores the most recent execution plan result so validate_query
 # can pass it to run_llm_plan_analyser without a second DB call
@@ -178,14 +180,15 @@ def _check_cartesian_join(sql: str) -> ValidationOutcome:
 
 def _check_execution_plan(sql: str) -> ValidationOutcome:
     global _last_plan_result
-    from app.utils.execution_plan import check_query_plan
+    
 
     result = check_query_plan(sql)
     _last_plan_result = result  # store for reuse in validate_query
+    
 
     if result["success"]:
         try:
-            import app.observability.demo_logger as demo_logger
+            
             demo_logger.execution_plan_result(
                 max_rows=result["max_estimated_rows"],
                 statement_cost=result["statement_cost"],
@@ -196,8 +199,8 @@ def _check_execution_plan(sql: str) -> ValidationOutcome:
                 score_label=result.get("score_label", "UNKNOWN"),
                 score_deductions=result.get("score_deductions", []),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"DEMO LOGGER ERROR: {e}")  # temporary — remove after fix
 
     if not result["success"]:
         logger.warning(

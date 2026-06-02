@@ -2,6 +2,7 @@ import logging
 import xml.etree.ElementTree as ET
 import pyodbc
 from app.config import settings
+from app.utils.db_connection import get_mssql_connection
 
 logger = logging.getLogger(__name__)
 
