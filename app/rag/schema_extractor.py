@@ -323,9 +323,47 @@ def _format_column(name: str, col: dict) -> str:
     parts[0] += ")"
     return parts[0]
 
+# Markers for the two sections
+AUTO_START = "<!-- AUTO-GENERATED SECTION — DO NOT EDIT MANUALLY -->"
+AUTO_END   = "<!-- END AUTO-GENERATED SECTION -->"
+HUMAN_START = "<!-- HUMAN ANNOTATIONS — SAFE TO EDIT -->"
+HUMAN_END   = "<!-- END HUMAN ANNOTATIONS -->"
+
+DEFAULT_HUMAN_ANNOTATIONS = """<!-- HUMAN ANNOTATIONS — SAFE TO EDIT -->
+<!-- This section is never overwritten by the extractor -->
+<!-- Add business context, column value examples, join patterns, notes here -->
+
+## Business Context
+
+### General Notes
+- Add any business-specific notes about the data here
+- Describe what each table is used for in your business context
+
+### Column Value Reference
+
+#### orders.status
+Possible values: pending, confirmed, shipped, delivered, cancelled
+
+#### products.is_active
+1 = product is available for sale, 0 = product is discontinued
+
+### Common Query Patterns
+- To find all orders for a customer: JOIN orders o ON o.customer_id = cu.customer_id
+- To find products in a category: JOIN categories c ON p.category_id = c.category_id
+- To find order line items: JOIN order_items oi ON oi.order_id = o.order_id
+
+<!-- END HUMAN ANNOTATIONS -->"""
+
 
 def generate_markdown(schema: dict) -> str:
+    """Generates only the auto-generated section content."""
     lines = []
+    lines.append(AUTO_START)
+    lines.append(f"<!-- Last extracted: {schema['extracted_at']} -->")
+    lines.append(
+        "<!-- Changes to this section will be overwritten on next startup -->"
+    )
+    lines.append(f"")
     lines.append(f"# eCommerce Database Schema")
     lines.append(f"")
     lines.append(f"## Database: {schema['database']}")
@@ -376,7 +414,36 @@ def generate_markdown(schema: dict) -> str:
                 )
             lines.append(f"")
 
+    lines.append(AUTO_END)
     return "\n".join(lines)
+
+
+def _extract_auto_section(content: str) -> str:
+    """Extracts only the auto-generated section from a file."""
+    start = content.find(AUTO_START)
+    end = content.find(AUTO_END)
+    if start == -1 or end == -1:
+        return content
+    return content[start:end + len(AUTO_END)]
+
+
+def _extract_human_section(content: str) -> str:
+    """Extracts the human annotations section from a file."""
+    start = content.find(HUMAN_START)
+    end = content.find(HUMAN_END)
+    if start == -1 or end == -1:
+        return DEFAULT_HUMAN_ANNOTATIONS
+    return content[start:end + len(HUMAN_END)]
+
+
+def _combine_sections(auto_section: str, human_section: str) -> str:
+    """Combines auto and human sections into the final file."""
+    return (
+        auto_section
+        + "\n\n---\n\n"
+        + human_section
+        + "\n"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -412,29 +479,42 @@ def run_extraction() -> dict:
     """
     Full extraction pipeline:
     1. Extract schema from live database
-    2. Generate markdown
-    3. Compare with current file
-    4. If changed: archive old version, write new file, flag for review
+    2. Generate auto section markdown
+    3. Compare auto section only with current file (ignores human edits)
+    4. If changed: archive old version, write new auto section + preserve human section
     5. Return status dict
-
-    Returns:
-        {
-            "changed": bool,
-            "table_count": int,
-            "archive_path": str or None,
-            "message": str,
-        }
     """
     logger.info("Starting schema extraction from live database")
 
     schema_dict = extract_schema_dict()
-    new_markdown = generate_markdown(schema_dict)
+    new_auto_section = generate_markdown(schema_dict)
 
-    # Compare with existing file
-    current_hash = _file_hash(SCHEMA_FILE_PATH)
-    new_hash = hashlib.md5(new_markdown.encode()).hexdigest()
+    # Read existing file
+    existing_content = ""
+    if os.path.exists(SCHEMA_FILE_PATH):
+        with open(SCHEMA_FILE_PATH, "r", encoding="utf-8") as f:
+            existing_content = f.read()
 
-    if current_hash == new_hash:
+    # Compare only the auto-generated section
+    existing_auto = _extract_auto_section(existing_content)
+    existing_human = _extract_human_section(existing_content)
+
+    # Strip timestamps from comparison to avoid false positives
+    def _strip_timestamp(text: str) -> str:
+        import re
+        return re.sub(
+            r"<!-- Last extracted: .*? -->",
+            "<!-- Last extracted: TIMESTAMP -->",
+            text,
+        )
+
+    existing_auto_clean = _strip_timestamp(existing_auto)
+    new_auto_clean = _strip_timestamp(new_auto_section)
+
+    existing_hash = hashlib.md5(existing_auto_clean.encode()).hexdigest()
+    new_hash = hashlib.md5(new_auto_clean.encode()).hexdigest()
+
+    if existing_hash == new_hash:
         logger.info(
             "Schema unchanged — no update needed. Tables: %d",
             len(schema_dict["tables"]),
@@ -450,11 +530,15 @@ def run_extraction() -> dict:
     # Schema has changed — archive old and write new
     archive_path = _archive_current_schema()
 
+    # Combine new auto section with preserved human section
+    final_content = _combine_sections(new_auto_section, existing_human)
+
     with open(SCHEMA_FILE_PATH, "w", encoding="utf-8") as f:
-        f.write(new_markdown)
+        f.write(final_content)
 
     logger.warning(
         "Schema has changed. New file written to %s. "
+        "Human annotations preserved. "
         "Please review before re-embedding ChromaDB.",
         SCHEMA_FILE_PATH,
     )
@@ -465,6 +549,7 @@ def run_extraction() -> dict:
         "archive_path": archive_path,
         "message": (
             f"Schema has changed. New file written to ecommerce_schema.md. "
+            f"Human annotations preserved. "
             f"Old version archived to {archive_path}. "
             f"Review the new file and run: "
             f"poetry run python -m app.rag.embedder --force-reembed"

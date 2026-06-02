@@ -1,12 +1,8 @@
-<!-- AUTO-GENERATED SECTION — DO NOT EDIT MANUALLY -->
-<!-- Last extracted: 2026-06-02T13:45:39.421303 -->
-<!-- Changes to this section will be overwritten on next startup -->
-
 # eCommerce Database Schema
 
 ## Database: QueryBotDB
 ## Dialect: Microsoft SQL Server (T-SQL)
-## Extracted at: 2026-06-02T13:45:39.421303
+## Extracted at: 2026-06-02T11:01:22.499910
 
 ---
 
@@ -156,32 +152,3 @@ Indexes:
 - ix_query_audit_created_at on (created_at)
 - ix_query_audit_session_id on (session_id)
 - PK__query_au__5AF33E33BD756310 on (audit_id) (UNIQUE, PRIMARY KEY)
-
-<!-- END AUTO-GENERATED SECTION -->
-
----
-
-<!-- HUMAN ANNOTATIONS — SAFE TO EDIT -->
-<!-- This section is never overwritten by the extractor -->
-<!-- Add business context, column value examples, join patterns, notes here -->
-
-## Business Context
-
-### General Notes
-- Add any business-specific notes about the data here
-- Describe what each table is used for in your business context
-
-### Column Value Reference
-
-#### orders.status
-Possible values: pending, confirmed, shipped, delivered, cancelled
-
-#### products.is_active
-1 = product is available for sale, 0 = product is discontinued
-
-### Common Query Patterns
-- To find all orders for a customer: JOIN orders o ON o.customer_id = cu.customer_id
-- To find products in a category: JOIN categories c ON p.category_id = c.category_id
-- To find order line items: JOIN order_items oi ON oi.order_id = o.order_id
-
-<!-- END HUMAN ANNOTATIONS -->

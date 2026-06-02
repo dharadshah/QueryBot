@@ -12,6 +12,7 @@ from app.constants.messages import (
     SESSION_COMPLETED,
     SESSION_FAILED,
 )
+from app.rag.schema_extractor import run_extraction
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,73 @@ async def lifespan(app: FastAPI):
         },
     )
     create_audit_tables()
+
+    # 3b. Check for schema changes against live database
+    logger.info(
+        "Checking for schema changes",
+        extra={
+            "agent": "app",
+            "event": "schema_check",
+            "session_id": "app_startup",
+            "payload": {},
+        },
+    )
+    try:
+        extraction_result = run_extraction()
+        if extraction_result["changed"]:
+            logger.warning(
+                "DATABASE SCHEMA HAS CHANGED — human review required before re-embedding.\n"
+                "%s",
+                extraction_result["message"],
+                extra={
+                    "agent": "app",
+                    "event": "schema_changed",
+                    "session_id": "app_startup",
+                    "payload": {
+                        "table_count": extraction_result["table_count"],
+                        "archive_path": extraction_result["archive_path"],
+                        "message": extraction_result["message"],
+                    },
+                },
+            )
+            print(
+                f"\n{'=' * 60}\n"
+                f"  SCHEMA CHANGE DETECTED\n"
+                f"  {extraction_result['table_count']} tables found\n"
+                f"  Old version archived to:\n"
+                f"  {extraction_result['archive_path']}\n"
+                f"\n"
+                f"  Review the updated schema file at:\n"
+                f"  app/rag/schema_definitions/ecommerce_schema.md\n"
+                f"\n"
+                f"  When satisfied, re-embed ChromaDB by running:\n"
+                f"  poetry run python -m app.rag.embedder --force-reembed\n"
+                f"{'=' * 60}\n"
+            )
+        else:
+            logger.info(
+                "Schema unchanged — %d tables. No re-embedding required.",
+                extraction_result["table_count"],
+                extra={
+                    "agent": "app",
+                    "event": "schema_unchanged",
+                    "session_id": "app_startup",
+                    "payload": {
+                        "table_count": extraction_result["table_count"],
+                    },
+                },
+            )
+    except Exception as e:
+        logger.warning(
+            "Schema check failed — continuing with existing schema: %s",
+            str(e),
+            extra={
+                "agent": "app",
+                "event": "schema_check_failed",
+                "session_id": "app_startup",
+                "payload": {"error": str(e)},
+            },
+        )
 
     # 4. Embed schema into ChromaDB — idempotent
     logger.info(
