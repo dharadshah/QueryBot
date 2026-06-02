@@ -88,3 +88,9 @@ PERMISSION_DENIED_CUSTOMER_OTHER = (
 PERMISSION_DENIED_TABLE = (
     "Your current role does not have permission to access the requested data."
 )
+
+# LLM Plan Analyser messages
+PLAN_ANALYSIS_STARTED = "Starting LLM execution plan analysis"
+PLAN_ANALYSIS_APPROVED = "LLM plan analysis approved — reason: {reason}"
+PLAN_ANALYSIS_WARNED = "LLM plan analysis warned — reason: {reason}"
+PLAN_ANALYSIS_REJECTED = "LLM plan analysis rejected — reason: {reason}"

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # LLM Provider
     llm_provider: str = "groq"
+    enable_llm_plan_analyser: bool = False
     
     # Groq
     groq_api_key: str

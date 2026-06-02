@@ -32,6 +32,7 @@ class AgentName:
     SCHEMA_RETRIEVER = "schema_retriever"
     QUERY_GENERATOR = "query_generator"
     QUERY_VALIDATOR = "query_validator"
+    LLM_PLAN_ANALYSER = "llm_plan_analyser" 
     RESPONSE_SYNTHESISER = "response_synthesiser"
     ORCHESTRATOR = "orchestrator"
     DB_QUERY_TOOL = "db_query_tool"
@@ -72,6 +73,12 @@ class EventName:
     RESPONSE_SYNTHESIS_STARTED = "response_synthesis_started"
     RESPONSE_SYNTHESIS_COMPLETED = "response_synthesis_completed"
 
+    # LLM Plan Analyser events
+    PLAN_ANALYSIS_STARTED = "plan_analysis_started"
+    PLAN_ANALYSIS_APPROVED = "plan_analysis_approved"
+    PLAN_ANALYSIS_WARNED = "plan_analysis_warned"
+    PLAN_ANALYSIS_REJECTED = "plan_analysis_rejected"
+
 
 class HardRuleCode:
     NOT_SELECT = "NOT_SELECT"
@@ -83,6 +90,7 @@ class HardRuleCode:
     CARTESIAN_JOIN = "CARTESIAN_JOIN"
     SYNTAX_ERROR = "SYNTAX_ERROR"
     EXECUTION_PLAN = "EXECUTION_PLAN"        
+    LLM_PLAN_ANALYSIS = "LLM_PLAN_ANALYSIS"
 
 
 class DisallowedKeyword:

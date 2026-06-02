@@ -260,3 +260,22 @@ def execution_plan_result(
         f"{score_colour}{BOLD}{score}/100  —  {score_label}{RESET}"
     )
     print(f"  {DIM}{'─' * 55}{RESET}\n")
+
+def llm_plan_analyser(
+    verdict: str,
+    reason: str,
+    findings: list,
+    latency_ms: int,
+) -> None:
+    if not _enabled():
+        return
+    _header("Agent 2b — LLM Plan Analyser", YELLOW)
+    _row("Action :", "Calling LLM to evaluate execution plan efficiency")
+    colour = GREEN if verdict == "APPROVED" else (YELLOW if verdict == "WARN" else RED)
+    _row("Verdict:", f"{colour}{BOLD}{verdict}{RESET}")
+    _row("Reason :", reason)
+    if findings:
+        print(f"  {DIM}{'Findings':<10}{RESET}")
+        for finding in findings:
+            print(f"    {DIM}•{RESET} {finding}")
+    _row("Time   :", f"{latency_ms:,}ms")
